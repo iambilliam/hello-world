@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Letterpress Scripture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:ital,wght@0,400;1,400&display=swap">
+<style>
+/* Layout: one phone screen — header, verse set in type that fits the space left
+   above the keyboard, and the typing tray at the bottom. Tokens follow the
+   Letterpress prototype's Classical design system (deliberately light-only, like paper). */
+:root {
+  --color-bg: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201f1d;
+  --color-accent: #b68235;
+  --color-divider: color-mix(in srgb, #201f1d 16%, transparent);
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-400: #bab6b6;
+  --color-neutral-500: #9b9797;
+  --color-neutral-600: #7d7979;
+  --color-accent-200: #ffe3bf;
+  --color-accent-600: #a06f24;
+  --color-accent-700: #7d5411;
+  --color-accent-800: #5a3b0a;
+
+  --font-heading: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --font-body: "Lora", Georgia, "Times New Roman", serif;
+
+  --space-1: 4.6px;
+  --space-2: 9.2px;
+  --space-3: 13.8px;
+  --space-4: 18.4px;
+  --space-6: 27.6px;
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); }
+@keyframes caret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+#app {
+  position: fixed; inset: 0;
+  display: grid; grid-template-rows: auto 1fr auto;
+  font-family: var(--font-heading);
+  user-select: none; -webkit-user-select: none; cursor: default;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-block: calc(var(--space-3) + env(safe-area-inset-top, 0px)) var(--space-3);
+  font-family: var(--font-body); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+.new-verse {
+  all: unset; cursor: pointer; color: var(--color-accent-700);
+  padding: 6px 0 3px; border-bottom: 1px solid var(--color-accent);
+  letter-spacing: inherit; text-transform: inherit;
+}
+.new-verse:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+
+main {
+  min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-4);
+}
+.meta {
+  display: flex; align-items: center; gap: var(--space-3);
+  font-family: var(--font-body); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--color-neutral-600); font-variant-numeric: tabular-nums;
+}
+.ref { color: var(--color-accent-700); }
+.sep { width: 1px; height: 10px; background: var(--color-divider); }
+.marks { display: flex; gap: var(--space-1); }
+.marks i { display: block; width: 14px; height: 1px; background: var(--color-neutral-300); transition: background 300ms; }
+.marks i.on { background: var(--color-accent); }
+
+#verse {
+  width: 100%;
+  display: flex; flex-wrap: wrap; justify-content: center;
+  column-gap: .32em; row-gap: .12em;
+  line-height: 1.08; font-weight: 400; font-size: 32px;
+}
+.word { display: flex; white-space: nowrap; }
+.slot { position: relative; display: inline-block; padding: 0 .015em; transition: color 400ms; }
+.slot i { position: absolute; left: .08em; right: .08em; bottom: -.04em; height: 1px; transition: background 300ms, height 300ms; }
+.punct { display: inline-block; transition: color 400ms; }
+
+.hint {
+  margin: 0; min-height: 1.6em; max-width: 34ch; text-align: center;
+  font-family: var(--font-body); font-style: italic; font-size: 13px; color: var(--color-neutral-600);
+}
+
+footer {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  padding-block: var(--space-2) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+}
+.rule { width: min(420px, 86%); height: 1px; background: var(--color-divider); }
+#tray {
+  display: flex; align-items: center; justify-content: center; gap: 2px;
+  min-height: 44px; max-width: 100%; overflow: hidden; font-size: 34px; line-height: 1;
+}
+#tray span[data-tray] { display: inline-block; min-width: .45em; text-align: center; transition: color 200ms; }
+#caret { display: inline-block; width: 1px; height: .85em; background: var(--color-accent); animation: caret 1.1s steps(1) infinite; }
+.prompt {
+  margin: 0; font-family: var(--font-body); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--color-neutral-500);
+}
+
+#input {
+  position: fixed; left: 50%; bottom: 0; width: 2px; height: 2px; opacity: .01;
+  font-size: 16px; border: 0; padding: 0; margin: 0; outline: none;
+  color: transparent; caret-color: transparent; background: transparent; pointer-events: none;
+}
+#layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  #caret { animation: none; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span>Letterpress</span>
+    <button class="new-verse" id="newVerse" type="button">New verse</button>
+  </header>
+  <main id="main">
+    <div class="meta">
+      <span class="ref" id="ref"></span>
+      <span class="sep"></span>
+      <span id="passLabel"></span>
+      <span class="marks" id="marks"><i></i><i></i><i></i></span>
+    </div>
+    <div id="verse" aria-live="polite"></div>
+    <p class="hint" id="hint"></p>
+  </main>
+  <footer>
+    <div class="rule"></div>
+    <div id="tray"><span id="caret"></span></div>
+    <p class="prompt" id="prompt"></p>
+  </footer>
+  <input id="input" aria-label="Type the verse" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="text" enterkeyhint="done">
+  <div id="layer"></div>
+</div>
+
+<script>
+// A curated set of well-known King James Version verses (public domain).
+const VERSES = [
+  ['Genesis 1:1', 'In the beginning God created the heaven and the earth.'],
+  ['Joshua 1:9', 'Have not I commanded thee? Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest.'],
+  ['Psalm 19:1', 'The heavens declare the glory of God; and the firmament sheweth his handywork.'],
+  ['Psalm 23:1', 'The LORD is my shepherd; I shall not want.'],
+  ['Psalm 27:1', 'The LORD is my light and my salvation; whom shall I fear? the LORD is the strength of my life; of whom shall I be afraid?'],
+  ['Psalm 34:8', 'O taste and see that the LORD is good: blessed is the man that trusteth in him.'],
+  ['Psalm 37:4', 'Delight thyself also in the LORD; and he shall give thee the desires of thine heart.'],
+  ['Psalm 46:10', 'Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth.'],
+  ['Psalm 51:10', 'Create in me a clean heart, O God; and renew a right spirit within me.'],
+  ['Psalm 118:24', 'This is the day which the LORD hath made; we will rejoice and be glad in it.'],
+  ['Psalm 119:105', 'Thy word is a lamp unto my feet, and a light unto my path.'],
+  ['Proverbs 3:5', 'Trust in the LORD with all thine heart; and lean not unto thine own understanding.'],
+  ['Proverbs 3:6', 'In all thy ways acknowledge him, and he shall direct thy paths.'],
+  ['Proverbs 18:10', 'The name of the LORD is a strong tower: the righteous runneth into it, and is safe.'],
+  ['Ecclesiastes 3:1', 'To every thing there is a season, and a time to every purpose under the heaven:'],
+  ['Isaiah 40:31', 'But they that wait upon the LORD shall renew their strength; they shall mount up with wings as eagles; they shall run, and not be weary; and they shall walk, and not faint.'],
+  ['Isaiah 41:10', 'Fear thou not; for I am with thee: be not dismayed; for I am thy God: I will strengthen thee; yea, I will help thee; yea, I will uphold thee with the right hand of my righteousness.'],
+  ['Jeremiah 29:11', 'For I know the thoughts that I think toward you, saith the LORD, thoughts of peace, and not of evil, to give you an expected end.'],
+  ['Micah 6:8', 'He hath shewed thee, O man, what is good; and what doth the LORD require of thee, but to do justly, and to love mercy, and to walk humbly with thy God?'],
+  ['Matthew 5:9', 'Blessed are the peacemakers: for they shall be called the children of God.'],
+  ['Matthew 5:14', 'Ye are the light of the world. A city that is set on an hill cannot be hid.'],
+  ['Matthew 6:33', 'But seek ye first the kingdom of God, and his righteousness; and all these things shall be added unto you.'],
+  ['Matthew 11:28', 'Come unto me, all ye that labour and are heavy laden, and I will give you rest.'],
+  ['John 1:1', 'In the beginning was the Word, and the Word was with God, and the Word was God.'],
+  ['John 3:16', 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'],
+  ['John 11:35', 'Jesus wept.'],
+  ['John 14:6', 'Jesus saith unto him, I am the way, the truth, and the life: no man cometh unto the Father, but by me.'],
+  ['Romans 3:23', 'For all have sinned, and come short of the glory of God;'],
+  ['Romans 6:23', 'For the wages of sin is death; but the gift of God is eternal life through Jesus Christ our Lord.'],
+  ['Romans 8:28', 'And we know that all things work together for good to them that love God, to them who are the called according to his purpose.'],
+  ['1 Corinthians 13:13', 'And now abideth faith, hope, charity, these three; but the greatest of these is charity.'],
+  ['Galatians 5:22', 'But the fruit of the Spirit is love, joy, peace, longsuffering, gentleness, goodness, faith,'],
+  ['Ephesians 2:8', 'For by grace are ye saved through faith; and that not of yourselves: it is the gift of God:'],
+  ['Philippians 4:13', 'I can do all things through Christ which strengtheneth me.'],
+  ['1 Thessalonians 5:17', 'Pray without ceasing.'],
+  ['2 Timothy 1:7', 'For God hath not given us the spirit of fear; but of power, and of love, and of a sound mind.'],
+  ['Hebrews 11:1', 'Now faith is the substance of things hoped for, the evidence of things not seen.'],
+  ['Hebrews 13:8', 'Jesus Christ the same yesterday, and to day, and for ever.'],
+  ['James 1:5', 'If any of you lack wisdom, let him ask of God, that giveth to all men liberally, and upbraideth not; and it shall be given him.'],
+  ['1 Peter 5:7', 'Casting all your care upon him; for he careth for you.'],
+  ['1 John 1:9', 'If we confess our sins, he is faithful and just to forgive us our sins, and to cleanse us from all unrighteousness.'],
+];
+
+const PASSES = ['Full', 'Initials', 'From memory'];
+const FLIGHT_MS = 700;
+const SENT = '​';
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const touch = matchMedia('(pointer: coarse)').matches;
+
+const $ = id => document.getElementById(id);
+const app = $('app'), main = $('main'), verseEl = $('verse'), trayEl = $('tray'), caretEl = $('caret');
+const layer = $('layer'), input = $('input'), hintEl = $('hint');
+
+const S = {
+  verse: null, words: [], filled: [], pass: 0, tray: [], strikes: 0, revealed: new Set(),
+  done: false, typed: false, launching: false, focused: false,
+};
+const reserved = new Set();
+let seq = 0, bag = [];
+
+// Shuffle-bag so every verse comes up once before any repeats.
+function randomVerse() {
+  if (!bag.length) {
+    bag = VERSES.map((_, i) => i).filter(i => !S.verse || VERSES[i] !== S.verse);
+    for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+  }
+  return VERSES[bag.pop()];
+}
+
+// Each word keeps its punctuation for display; only letters are typed.
+function parse(text) {
+  return text.split(/\s+/).filter(Boolean).map(raw => {
+    let n = 0;
+    const parts = [...raw].map(ch => /[a-z]/i.test(ch) ? { ch, letter: true, i: n++ } : { ch, letter: false });
+    return { parts, target: raw.toLowerCase().replace(/[^a-z]/g, '') };
+  }).filter(w => w.target);
+}
+
+function loadVerse(v, pass = 0) {
+  S.verse = v; S.words = parse(v[1]);
+  reset(pass);
+}
+function reset(pass) {
+  reserved.clear();
+  Object.assign(S, { pass, tray: [], strikes: 0, revealed: new Set(), done: false, launching: false });
+  S.filled = S.words.map(w => Array(w.target.length).fill(false));
+  buildVerse(); renderTray(); paint(); fit();
+}
+
+function buildVerse() {
+  verseEl.textContent = '';
+  S.words.forEach((w, wi) => {
+    const wordEl = document.createElement('div');
+    wordEl.className = 'word'; wordEl.dataset.word = wi;
+    for (const p of w.parts) {
+      const span = document.createElement('span');
+      if (p.letter) {
+        span.className = 'slot'; span.dataset.slot = `${wi}-${p.i}`;
+        span.appendChild(document.createElement('i'));
+        span.appendChild(document.createTextNode(p.ch));
+      } else {
+        span.className = 'punct'; span.textContent = p.ch;
+      }
+      wordEl.appendChild(span);
+    }
+    verseEl.appendChild(wordEl);
+  });
+  $('ref').textContent = S.verse[0];
+}
+
+const wordDone = i => S.filled[i] && S.filled[i].every(Boolean);
+function nextWord() {
+  for (let i = 0; i < S.words.length; i++) if (!wordDone(i) && !reserved.has(i)) return i;
+  return -1;
+}
+
+// Apply the current state to the verse's letter slots and the labels.
+function paint() {
+  const nw = nextWord(), { pass, done, strikes, revealed } = S;
+  S.words.forEach((w, wi) => {
+    const wordEl = verseEl.children[wi]; if (!wordEl) return;
+    const complete = wordDone(wi);
+    for (const el of wordEl.children) {
+      if (el.classList.contains('punct')) {
+        el.style.color = complete ? 'var(--color-text)' : 'var(--color-neutral-400)';
+        continue;
+      }
+      const i = Number(el.dataset.slot.split('-')[1]);
+      const on = S.filled[wi][i];
+      const shown = pass === 0 || (pass === 1 && i === 0) || revealed.has(wi);
+      const warn = !done && wi === nw && strikes > 0;
+      el.style.color = on ? 'var(--color-text)' : 'transparent';
+      el.style.webkitTextStroke = on || !shown ? '0px transparent' : `1px ${warn ? 'var(--color-accent-600)' : 'var(--color-neutral-400)'}`;
+      const rule = el.firstChild;
+      rule.style.background = warn ? 'var(--color-accent-600)' : !done && wi === nw ? 'var(--color-accent)' : (!on && pass > 0 ? 'var(--color-neutral-300)' : 'transparent');
+      rule.style.height = warn ? '2px' : '1px';
+    }
+  });
+  $('passLabel').textContent = PASSES[pass];
+  [...$('marks').children].forEach((m, i) => m.classList.toggle('on', i <= pass));
+  hintEl.textContent = done ? (pass < 2 ? 'Once more, with less to go on.' : 'Well set. A new verse is coming.')
+    : strikes > 0 ? 'Not quite. Miss again and the word is revealed.'
+    : revealed.has(nw) ? 'Revealed. Set it in place.'
+    : !S.typed ? 'Type each word in order. Space sends it to its place.'
+    : pass === 1 ? 'Only the initials remain.' : pass === 2 ? 'Set the verse from memory.' : '';
+  $('prompt').textContent = touch && !S.focused ? 'Tap anywhere to begin' : 'Type a word, then space';
+  caretEl.style.background = S.focused || !touch ? 'var(--color-accent)' : 'var(--color-neutral-300)';
+}
+
+function renderTray() {
+  for (const el of [...trayEl.querySelectorAll('[data-tray]')]) el.remove();
+  const typed = S.tray.map(t => t.ch).join(''), nw = nextWord();
+  const onTrack = typed && nw >= 0 && S.words[nw].target.startsWith(typed);
+  for (const t of S.tray) {
+    const span = document.createElement('span');
+    span.dataset.tray = t.id; span.textContent = t.ch;
+    span.style.color = onTrack ? 'var(--color-accent)' : 'var(--color-neutral-500)';
+    trayEl.insertBefore(span, caretEl);
+  }
+}
+
+// Size the verse to the largest type that fits the space left on screen.
+function fit() {
+  const others = [...main.children].filter(el => el !== verseEl);
+  const gap = parseFloat(getComputedStyle(main).rowGap) || 0;
+  const availH = main.clientHeight - others.reduce((h, el) => h + el.offsetHeight, 0) - gap * others.length;
+  const availW = main.clientWidth;
+  let lo = 14, hi = 72;
+  for (let k = 0; k < 9; k++) {
+    const mid = (lo + hi) / 2;
+    verseEl.style.fontSize = mid + 'px';
+    if (verseEl.scrollHeight <= availH && verseEl.scrollWidth <= availW) lo = mid; else hi = mid;
+  }
+  verseEl.style.fontSize = Math.floor(lo) + 'px';
+}
+
+// — typing —
+function focusInput() { input.focus({ preventScroll: true }); }
+function backspace() { if (!S.launching && !S.done) { S.tray.pop(); renderTray(); } }
+function typeChar(ch) {
+  if (S.done) return;
+  if (ch === ' ' || ch === '\n') return submit();
+  if (!/^[a-zA-Z]$/.test(ch)) return;
+  S.typed = true;
+  S.tray.push({ id: ++seq, ch: ch.toLowerCase() });
+  renderTray(); paint();
+  // The last open word sets itself as soon as it's spelled.
+  const open = S.words.map((_, i) => i).filter(i => !wordDone(i) && !reserved.has(i));
+  if (open.length === 1 && S.words[open[0]].target === S.tray.map(t => t.ch).join('')) submit();
+}
+function submit() {
+  if (!S.tray.length || S.launching) return;
+  const typed = S.tray.map(t => t.ch).join(''), target = nextWord();
+  if (target < 0 || S.words[target].target !== typed) return miss();
+  reserved.add(target);
+  flyWord(S.tray.slice(), target);
+}
+
+function miss() {
+  const els = [...trayEl.querySelectorAll('[data-tray]')];
+  const cur = nextWord(), revealing = cur >= 0 && S.strikes > 0 && !S.revealed.has(cur);
+  S.launching = true;
+  if (cur >= 0) { if (S.strikes === 0) S.strikes = 1; else { S.strikes = 0; if (revealing) S.revealed.add(cur); } }
+  els.forEach(el => el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-out' }));
+  setTimeout(() => {
+    let finished = false;
+    const finish = () => { if (finished) return; finished = true; S.tray = []; S.launching = false; renderTray(); paint(); };
+    const anims = els.map((el, i) => el.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(14px)' }], { duration: 260, delay: i * 25, easing: 'ease-in', fill: 'forwards' }));
+    if (anims.length) { anims[anims.length - 1].onfinish = finish; setTimeout(finish, 700); } else finish();
+  }, 420);
+  paint();
+  const wordEl = cur >= 0 && verseEl.children[cur];
+  if (!wordEl) return;
+  if (revealing) reveal(wordEl);
+  else wordEl.animate([{ opacity: 1 }, { opacity: .35 }, { opacity: 1 }, { opacity: .35 }, { opacity: 1 }], { duration: 700, easing: 'ease-in-out' });
+}
+
+function reveal(wordEl) {
+  [...wordEl.querySelectorAll('.slot')].forEach((el, i) => el.animate([
+    { opacity: 0, transform: 'translateY(.22em) rotate(-4deg)', filter: 'blur(5px)' },
+    { opacity: 1, transform: 'translateY(-.03em) rotate(0deg)', filter: 'blur(0px)', offset: .7 },
+    { opacity: 1, transform: 'translateY(0) rotate(0deg)', filter: 'blur(0px)' }
+  ], { duration: 560, delay: i * 70, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
+}
+
+// Each typed letter arcs from the tray into its slot in the verse.
+function flyWord(tray, target) {
+  const wordEl = verseEl.children[target];
+  const measured = tray.map((t, i) => {
+    const from = trayEl.querySelector(`[data-tray="${t.id}"]`), to = verseEl.querySelector(`[data-slot="${target}-${i}"]`);
+    return from && to ? { ch: to.lastChild.textContent, i, a: from.getBoundingClientRect(), b: to.getBoundingClientRect(), fromSize: parseFloat(getComputedStyle(from).fontSize), toSize: parseFloat(getComputedStyle(to).fontSize), to } : null;
+  }).filter(Boolean);
+  S.tray = []; renderTray();
+  if (reduceMotion || !measured.length) return landAll(target);
+  const stagger = Math.min(70, 400 / Math.max(tray.length, 1)), last = measured.length - 1;
+  const pending = { n: measured.length };
+  measured.forEach((m, idx) => {
+    const { ch, i, a, b, fromSize, toSize, to } = m;
+    const dx = (a.left + a.width / 2) - (b.left + b.width / 2), dy = (a.top + a.height / 2) - (b.top + b.height / 2);
+    const arc = Math.min(140, Math.hypot(dx, dy) * 0.3);
+    const outer = document.createElement('div');
+    outer.style.cssText = `position:fixed;left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px;transform-origin:center;will-change:transform;transform:translate(${dx}px, ${dy}px) scale(${fromSize / toSize})`;
+    const inner = document.createElement('span');
+    inner.textContent = ch;
+    inner.style.cssText = `display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-family:var(--font-heading);font-size:${toSize}px;line-height:1;color:var(--color-accent);will-change:transform`;
+    outer.appendChild(inner); layer.appendChild(outer);
+    const delay = idx * stagger;
+    outer.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${fromSize / toSize})` }, { transform: 'translate(0, 0) scale(1)' }], { duration: FLIGHT_MS, delay, easing: 'cubic-bezier(.45,0,.15,1)', fill: 'forwards' });
+    inner.animate([{ transform: 'translateY(0) rotate(-6deg)', easing: 'ease-out' }, { transform: `translateY(${-arc}px) rotate(2deg)`, offset: .5, easing: 'ease-in' }, { transform: 'translateY(0) rotate(0deg)' }], { duration: FLIGHT_MS, delay, fill: 'forwards' });
+    inner.animate([{ color: 'var(--color-accent)', filter: 'blur(0px)' }, { color: 'var(--color-accent)', filter: 'blur(0.6px)', offset: .5 }, { color: 'var(--color-accent-700)', filter: 'blur(0px)' }], { duration: FLIGHT_MS, delay, fill: 'forwards' }).onfinish = () => {
+      outer.remove();
+      S.filled[target][i] = true; paint();
+      merge(to, b, idx === last);
+      if (--pending.n <= 0) finishWord(target, wordEl);
+    };
+  });
+}
+function landAll(target) {
+  S.filled[target] = S.filled[target].map(() => true);
+  paint(); finishWord(target, null);
+}
+
+function merge(to, b, burst) {
+  to.animate([
+    { transform: 'scale(1.12)', color: 'var(--color-accent)' },
+    { transform: 'scale(0.97)', color: 'var(--color-accent-800)', offset: .55 },
+    { transform: 'scale(1)', color: 'var(--color-text)' }
+  ], { duration: 620, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  const cx = b.left + b.width / 2, cy = b.top + b.height / 2, r = Math.max(b.width, b.height * .7);
+  const ring = document.createElement('div');
+  ring.style.cssText = `position:fixed;left:${cx - r / 2}px;top:${cy - r / 2}px;width:${r}px;height:${r}px;border:1px solid var(--color-accent);border-radius:50%;opacity:0`;
+  layer.appendChild(ring);
+  ring.animate([{ transform: 'scale(.35)', opacity: .9 }, { transform: 'scale(1.6)', opacity: 0 }], { duration: 700, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }).onfinish = () => ring.remove();
+  if (!burst) return;
+  for (let k = 0; k < 7; k++) {
+    const dot = document.createElement('div');
+    const ang = (Math.PI * 2 * k) / 7 + Math.random() * .6, d = r * (.7 + Math.random() * .5);
+    dot.style.cssText = `position:fixed;left:${cx}px;top:${cy}px;width:3px;height:3px;margin:-1.5px;border-radius:50%;background:var(--color-accent)`;
+    layer.appendChild(dot);
+    dot.animate([{ transform: 'translate(0,0) scale(1)', opacity: 1 }, { transform: `translate(${Math.cos(ang) * d}px, ${Math.sin(ang) * d}px) scale(.2)`, opacity: 0 }], { duration: 560 + Math.random() * 200, easing: 'cubic-bezier(.1,.7,.3,1)', fill: 'forwards' }).onfinish = () => dot.remove();
+  }
+}
+
+function finishWord(target, wordEl) {
+  reserved.delete(target);
+  S.strikes = 0; paint();
+  if (wordEl && !reduceMotion) {
+    const r = wordEl.getBoundingClientRect();
+    const rule = document.createElement('div');
+    rule.style.cssText = `position:fixed;left:${r.left}px;top:${r.bottom + 2}px;width:${r.width}px;height:1px;background:var(--color-accent);transform-origin:left;transform:scaleX(0)`;
+    layer.appendChild(rule);
+    rule.animate([{ transform: 'scaleX(0)', opacity: 1 }, { transform: 'scaleX(1)', opacity: 1, offset: .5 }, { transform: 'scaleX(1)', opacity: 0 }], { duration: 1300, easing: 'cubic-bezier(.6,0,.2,1)', fill: 'forwards' }).onfinish = () => rule.remove();
+  }
+  if (!S.done && S.filled.every(r => r.every(Boolean))) complete();
+}
+
+// Three passes per verse: full outline, initials only, then from memory.
+function complete() {
+  S.done = true; paint();
+  if (!reduceMotion) verseEl.querySelectorAll('.slot').forEach((el, i) => el.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-0.07em)' }, { transform: 'translateY(0)' }], { duration: 520, delay: 200 + i * 25, easing: 'ease-in-out' }));
+  const token = S.verse;
+  setTimeout(() => {
+    if (S.verse !== token) return; // the reader already moved on
+    const next = () => {
+      if (S.pass < 2) reset(S.pass + 1); else loadVerse(randomVerse());
+      verseEl.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    };
+    const fade = verseEl.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-10px)' }], { duration: 340, easing: 'ease-in', fill: 'forwards' });
+    fade.onfinish = () => { fade.cancel(); next(); };
+  }, 1900);
+}
+
+// — wiring —
+input.value = SENT;
+input.addEventListener('input', () => {
+  const v = input.value;
+  if (!v.includes(SENT)) backspace();
+  for (const ch of v.replace(/​/g, '')) typeChar(ch);
+  input.value = SENT;
+});
+input.addEventListener('focus', () => { S.focused = true; paint(); });
+input.addEventListener('blur', () => { S.focused = false; paint(); });
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Enter') { e.preventDefault(); if (!S.done) submit(); return; }
+  if (e.target === input) return;
+  if (e.key === 'Backspace') return backspace();
+  if (e.key === ' ') { e.preventDefault(); if (!S.done) submit(); return; }
+  if (/^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); typeChar(e.key); }
+});
+app.addEventListener('click', focusInput);
+
+const newBtn = $('newVerse');
+newBtn.addEventListener('pointerdown', e => e.preventDefault()); // keep the keyboard open
+newBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  layer.textContent = '';
+  loadVerse(randomVerse());
+  verseEl.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  focusInput();
+});
+
+// Keep the app inside the visible area when the on-screen keyboard opens.
+function onViewport() {
+  const vv = window.visualViewport;
+  if (vv) { app.style.top = vv.offsetTop + 'px'; app.style.height = vv.height + 'px'; app.style.bottom = 'auto'; window.scrollTo(0, 0); }
+  fit();
+}
+if (window.visualViewport) { visualViewport.addEventListener('resize', onViewport); visualViewport.addEventListener('scroll', onViewport); }
+window.addEventListener('resize', fit);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+
+loadVerse(randomVerse());
+if (!touch) focusInput();
+</script>
+</body>
+</html>
