@@ -198,7 +198,6 @@ const VERSES = [
 
 const PASSES = ['Full', 'Initials', 'From memory'];
 const FLIGHT_MS = 700;
-const SENT = '​';
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const touch = matchMedia('(pointer: coarse)').matches;
 
@@ -239,7 +238,7 @@ function reset(pass) {
   reserved.clear();
   Object.assign(S, { pass, tray: [], strikes: 0, revealed: new Set(), done: false, launching: false });
   S.filled = S.words.map(w => Array(w.target.length).fill(false));
-  buildVerse(); renderTray(); paint(); fit();
+  buildVerse(); clearTray(); paint(); fit();
 }
 
 function buildVerse() {
@@ -331,21 +330,32 @@ function fit() {
 
 // — typing —
 function focusInput() { input.focus({ preventScroll: true }); }
-function backspace() { if (!S.launching && !S.done) { S.tray.pop(); renderTray(); } }
-function typeChar(ch) {
-  if (S.done) return;
-  if (ch === ' ' || ch === '\n') return submit();
-  if (!/^[a-zA-Z]$/.test(ch)) return;
-  S.typed = true;
-  S.tray.push({ id: ++seq, ch: ch.toLowerCase() });
+function clearTray() { S.tray = []; input.value = ''; renderTray(); }
+// The hidden input's value is the tray. Reading it whole (instead of a delta) lets
+// swipe typing and suggestion taps replace the word, as the keyboard expects.
+function syncFromInput() {
+  if (S.done || S.launching) { input.value = ''; return; }
+  const v = input.value, letters = v.replace(/[^a-zA-Z]/g, '').toLowerCase();
+  const sent = /[\s]/.test(v);
+  const next = [...letters].map((ch, i) => S.tray[i] && S.tray[i].ch === ch ? S.tray[i] : { id: ++seq, ch });
+  S.tray = next;
+  if (letters) S.typed = true;
   renderTray(); paint();
+  if (sent) return submit();
   // The last open word sets itself as soon as it's spelled.
   const open = S.words.map((_, i) => i).filter(i => !wordDone(i) && !reserved.has(i));
-  if (open.length === 1 && S.words[open[0]].target === S.tray.map(t => t.ch).join('')) submit();
+  if (open.length === 1 && S.words[open[0]].target === letters) submit();
+}
+function backspace() { input.value = input.value.slice(0, -1); syncFromInput(); }
+function typeChar(ch) {
+  if (ch === ' ' || ch === '\n') return submit();
+  if (!/^[a-zA-Z]$/.test(ch)) return;
+  input.value += ch; syncFromInput();
 }
 function submit() {
   if (!S.tray.length || S.launching) return;
   const typed = S.tray.map(t => t.ch).join(''), target = nextWord();
+  input.value = '';
   if (target < 0 || S.words[target].target !== typed) return miss();
   reserved.add(target);
   flyWord(S.tray.slice(), target);
@@ -359,7 +369,7 @@ function miss() {
   els.forEach(el => el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-out' }));
   setTimeout(() => {
     let finished = false;
-    const finish = () => { if (finished) return; finished = true; S.tray = []; S.launching = false; renderTray(); paint(); };
+    const finish = () => { if (finished) return; finished = true; S.launching = false; clearTray(); paint(); };
     const anims = els.map((el, i) => el.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(14px)' }], { duration: 260, delay: i * 25, easing: 'ease-in', fill: 'forwards' }));
     if (anims.length) { anims[anims.length - 1].onfinish = finish; setTimeout(finish, 700); } else finish();
   }, 420);
@@ -385,7 +395,7 @@ function flyWord(tray, target) {
     const from = trayEl.querySelector(`[data-tray="${t.id}"]`), to = verseEl.querySelector(`[data-slot="${target}-${i}"]`);
     return from && to ? { ch: to.lastChild.textContent, i, a: from.getBoundingClientRect(), b: to.getBoundingClientRect(), fromSize: parseFloat(getComputedStyle(from).fontSize), toSize: parseFloat(getComputedStyle(to).fontSize), to } : null;
   }).filter(Boolean);
-  S.tray = []; renderTray();
+  clearTray();
   if (reduceMotion || !measured.length) return landAll(target);
   const stagger = Math.min(70, 400 / Math.max(tray.length, 1)), last = measured.length - 1;
   const pending = { n: measured.length };
@@ -466,13 +476,7 @@ function complete() {
 }
 
 // — wiring —
-input.value = SENT;
-input.addEventListener('input', () => {
-  const v = input.value;
-  if (!v.includes(SENT)) backspace();
-  for (const ch of v.replace(/​/g, '')) typeChar(ch);
-  input.value = SENT;
-});
+input.addEventListener('input', syncFromInput);
 input.addEventListener('focus', () => { S.focused = true; paint(); });
 input.addEventListener('blur', () => { S.focused = false; paint(); });
 window.addEventListener('keydown', e => {
