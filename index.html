@@ -41,6 +41,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); }
 @keyframes caret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes tray-in { from { opacity: 0; transform: translateY(.18em); } }
 
 #app {
   position: fixed; inset: 0;
@@ -106,7 +107,7 @@ footer {
   display: flex; align-items: center; justify-content: center; gap: 2px;
   min-height: 44px; max-width: 100%; overflow: hidden; font-size: 34px; line-height: 1;
 }
-#tray span[data-tray] { display: inline-block; min-width: .45em; text-align: center; transition: color 200ms; }
+#tray span[data-tray] { display: inline-block; min-width: .45em; text-align: center; transition: color 200ms; animation: tray-in 200ms cubic-bezier(.2,.8,.2,1); }
 #caret { display: inline-block; width: 1px; height: .85em; background: var(--color-accent); animation: caret 1.1s steps(1) infinite; }
 .prompt {
   margin: 0; font-family: var(--font-body); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
@@ -121,7 +122,7 @@ footer {
 #layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
-  #caret { animation: none; }
+  #caret, #tray span[data-tray] { animation: none; }
 }
 </style>
 </head>
@@ -302,15 +303,19 @@ function paint() {
 }
 
 function renderTray() {
-  for (const el of [...trayEl.querySelectorAll('[data-tray]')]) el.remove();
-  const typed = S.tray.map(t => t.ch).join(''), nw = nextWord();
-  const onTrack = typed && nw >= 0 && S.words[nw].target.startsWith(typed);
+  // Keep the letters already in the tray (setTray keeps their ids) so only new ones animate in.
+  const ids = new Set(S.tray.map(t => t.id));
+  for (const el of [...trayEl.querySelectorAll('[data-tray]')]) if (!ids.has(Number(el.dataset.tray))) el.remove();
+  let node = trayEl.querySelector('[data-tray]');
   for (const t of S.tray) {
+    if (node && Number(node.dataset.tray) === t.id) { node = node.nextElementSibling; if (node && !node.dataset.tray) node = null; continue; }
     const span = document.createElement('span');
     span.dataset.tray = t.id; span.textContent = t.ch;
-    span.style.color = onTrack ? 'var(--color-accent)' : 'var(--color-neutral-500)';
-    trayEl.insertBefore(span, caretEl);
+    trayEl.insertBefore(span, node || caretEl);
   }
+  const typed = S.tray.map(t => t.ch).join(''), nw = nextWord();
+  const onTrack = typed && nw >= 0 && S.words[nw].target.startsWith(typed);
+  for (const el of trayEl.querySelectorAll('[data-tray]')) el.style.color = onTrack ? 'var(--color-accent)' : 'var(--color-neutral-500)';
 }
 
 // Size the verse to the largest type that fits the space left on screen.
@@ -340,7 +345,7 @@ let consumed = 0, consumedText = '';
 function clearInput() { S.tray = []; input.value = ''; consumed = 0; consumedText = ''; renderTray(); }
 function setTray(letters) {
   S.tray = [...letters].map((ch, i) => S.tray[i] && S.tray[i].ch === ch ? S.tray[i] : { id: ++seq, ch });
-  if (letters) S.typed = true;
+  if (letters) { S.typed = true; if (ghosts.length) dropGhosts(ghosts, true); } // clear a missed word out of the way
   renderTray();
 }
 const lettersOf = str => str.replace(/[^a-zA-Z]/g, '').toLowerCase();
@@ -380,24 +385,36 @@ function submit() {
   flyWord(S.tray.slice(), target);
 }
 
+// Letters of a missed word, shaking in the overlay until they drop (sooner if typing resumes).
+let ghosts = [];
+function dropGhosts(list, fast) {
+  ghosts = ghosts.filter(g => !list.includes(g));
+  list.forEach((g, i) => {
+    if (reduceMotion) return g.remove();
+    g.getAnimations().forEach(a => a.cancel());
+    g.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(14px)' }], { duration: fast ? 180 : 260, delay: fast ? 0 : i * 25, easing: 'ease-in', fill: 'forwards' }).onfinish = () => g.remove();
+  });
+}
+
 function miss() {
   const cur = nextWord();
   if (cur !== S.strikeWord) { S.strikes = 0; S.strikeWord = cur; } // strikes belong to one word
   const revealing = cur >= 0 && S.strikes > 0 && !S.revealed.has(cur);
   if (cur >= 0) { if (S.strikes === 0) S.strikes = 1; else { S.strikes = 0; if (revealing) S.revealed.add(cur); } }
   // Lift the wrong letters out of the tray so the next word can start at once.
-  const ghosts = [...trayEl.querySelectorAll('[data-tray]')].map(el => {
+  const mine = [...trayEl.querySelectorAll('[data-tray]')].map(el => {
     const r = el.getBoundingClientRect(), g = document.createElement('span');
     g.textContent = el.textContent;
     g.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-size:${getComputedStyle(el).fontSize};line-height:1;color:var(--color-neutral-500)`;
     layer.appendChild(g); return g;
   });
+  ghosts.push(...mine);
   S.tray = []; renderTray(); paint();
-  if (reduceMotion) ghosts.forEach(g => g.remove());
-  else ghosts.forEach((g, i) => {
-    g.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-out' });
-    g.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(14px)' }], { duration: 260, delay: 420 + i * 25, easing: 'ease-in', fill: 'forwards' }).onfinish = () => g.remove();
-  });
+  if (reduceMotion) dropGhosts(mine, true);
+  else {
+    mine.forEach(g => g.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-out' }));
+    setTimeout(() => dropGhosts(mine, false), 420);
+  }
   const wordEl = cur >= 0 && verseEl.children[cur];
   if (!wordEl) return;
   if (revealing) reveal(wordEl);
