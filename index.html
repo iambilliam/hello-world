@@ -206,8 +206,8 @@ const app = $('app'), main = $('main'), verseEl = $('verse'), trayEl = $('tray')
 const layer = $('layer'), input = $('input'), hintEl = $('hint');
 
 const S = {
-  verse: null, words: [], filled: [], pass: 0, tray: [], strikes: 0, revealed: new Set(),
-  done: false, typed: false, launching: false, focused: false,
+  verse: null, words: [], filled: [], pass: 0, tray: [], strikes: 0, strikeWord: -1, revealed: new Set(),
+  done: false, typed: false, focused: false,
 };
 const reserved = new Set();
 let seq = 0, bag = [];
@@ -236,9 +236,9 @@ function loadVerse(v, pass = 0) {
 }
 function reset(pass) {
   reserved.clear();
-  Object.assign(S, { pass, tray: [], strikes: 0, revealed: new Set(), done: false, launching: false });
+  Object.assign(S, { pass, tray: [], strikes: 0, strikeWord: -1, revealed: new Set(), done: false });
   S.filled = S.words.map(w => Array(w.target.length).fill(false));
-  buildVerse(); clearTray(); paint(); fit();
+  buildVerse(); clearInput(); paint(); fit();
 }
 
 function buildVerse() {
@@ -282,7 +282,7 @@ function paint() {
       const i = Number(el.dataset.slot.split('-')[1]);
       const on = S.filled[wi][i];
       const shown = pass === 0 || (pass === 1 && i === 0) || revealed.has(wi);
-      const warn = !done && wi === nw && strikes > 0;
+      const warn = !done && wi === S.strikeWord && strikes > 0;
       el.style.color = on ? 'var(--color-text)' : 'transparent';
       el.style.webkitTextStroke = on || !shown ? '0px transparent' : `1px ${warn ? 'var(--color-accent-600)' : 'var(--color-neutral-400)'}`;
       const rule = el.firstChild;
@@ -330,50 +330,74 @@ function fit() {
 
 // — typing —
 function focusInput() { input.focus({ preventScroll: true }); }
-function clearTray() { S.tray = []; input.value = ''; renderTray(); }
-// The hidden input's value is the tray. Reading it whole (instead of a delta) lets
-// swipe typing and suggestion taps replace the word, as the keyboard expects.
-function syncFromInput() {
-  if (S.done || S.launching) { input.value = ''; return; }
-  const v = input.value, letters = v.replace(/[^a-zA-Z]/g, '').toLowerCase();
-  const sent = /[\s]/.test(v);
-  const next = [...letters].map((ch, i) => S.tray[i] && S.tray[i].ch === ch ? S.tray[i] : { id: ++seq, ch });
-  S.tray = next;
+
+// The hidden input is a running buffer that the keyboard owns. We never change its
+// value mid-verse: rewriting it resets the keyboard, which breaks swipe typing and
+// suggestion taps. Instead we remember how much of it has already been sent (and what
+// that text was, in case the keyboard edits inside it); the words after that point,
+// up to the last space, get sent, and whatever follows the last space is the tray.
+let consumed = 0, consumedText = '';
+function clearInput() { S.tray = []; input.value = ''; consumed = 0; consumedText = ''; renderTray(); }
+function setTray(letters) {
+  S.tray = [...letters].map((ch, i) => S.tray[i] && S.tray[i].ch === ch ? S.tray[i] : { id: ++seq, ch });
   if (letters) S.typed = true;
-  renderTray(); paint();
-  if (sent) return submit();
+  renderTray();
+}
+const lettersOf = str => str.replace(/[^a-zA-Z]/g, '').toLowerCase();
+function syncFromInput() {
+  if (S.done || nextWord() < 0) return;
+  const v = input.value;
+  let keep = 0; const lim = Math.min(consumed, v.length);
+  while (keep < lim && v[keep] === consumedText[keep]) keep++;
+  consumed = keep;
+  const parts = v.slice(consumed).split(/\s+/), current = parts.pop();
+  for (const part of parts) {
+    if (S.done || nextWord() < 0) break;
+    const letters = lettersOf(part);
+    if (letters) { setTray(letters); submit(); }
+  }
+  consumed = v.length - current.length; consumedText = v.slice(0, consumed);
+  setTray(lettersOf(current)); paint();
   // The last open word sets itself as soon as it's spelled.
   const open = S.words.map((_, i) => i).filter(i => !wordDone(i) && !reserved.has(i));
-  if (open.length === 1 && S.words[open[0]].target === letters) submit();
+  if (open.length === 1 && S.words[open[0]].target === lettersOf(current)) sendTray();
 }
+// Send whatever is in the tray (space or enter from a keyboard that didn't put one in the buffer).
+function sendTray() { consumed = input.value.length; consumedText = input.value; submit(); }
 function backspace() { input.value = input.value.slice(0, -1); syncFromInput(); }
 function typeChar(ch) {
-  if (ch === ' ' || ch === '\n') return submit();
+  if (ch === ' ' || ch === '\n') return sendTray();
   if (!/^[a-zA-Z]$/.test(ch)) return;
   input.value += ch; syncFromInput();
 }
 function submit() {
-  if (!S.tray.length || S.launching) return;
+  if (!S.tray.length) return;
   const typed = S.tray.map(t => t.ch).join(''), target = nextWord();
-  input.value = '';
-  if (target < 0 || S.words[target].target !== typed) return miss();
+  if (target < 0) { S.tray = []; renderTray(); return; }
+  if (S.words[target].target !== typed) return miss();
   reserved.add(target);
+  if (target === S.strikeWord) S.strikes = 0;
   flyWord(S.tray.slice(), target);
 }
 
 function miss() {
-  const els = [...trayEl.querySelectorAll('[data-tray]')];
-  const cur = nextWord(), revealing = cur >= 0 && S.strikes > 0 && !S.revealed.has(cur);
-  S.launching = true;
+  const cur = nextWord();
+  if (cur !== S.strikeWord) { S.strikes = 0; S.strikeWord = cur; } // strikes belong to one word
+  const revealing = cur >= 0 && S.strikes > 0 && !S.revealed.has(cur);
   if (cur >= 0) { if (S.strikes === 0) S.strikes = 1; else { S.strikes = 0; if (revealing) S.revealed.add(cur); } }
-  els.forEach(el => el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-out' }));
-  setTimeout(() => {
-    let finished = false;
-    const finish = () => { if (finished) return; finished = true; S.launching = false; clearTray(); paint(); };
-    const anims = els.map((el, i) => el.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(14px)' }], { duration: 260, delay: i * 25, easing: 'ease-in', fill: 'forwards' }));
-    if (anims.length) { anims[anims.length - 1].onfinish = finish; setTimeout(finish, 700); } else finish();
-  }, 420);
-  paint();
+  // Lift the wrong letters out of the tray so the next word can start at once.
+  const ghosts = [...trayEl.querySelectorAll('[data-tray]')].map(el => {
+    const r = el.getBoundingClientRect(), g = document.createElement('span');
+    g.textContent = el.textContent;
+    g.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-size:${getComputedStyle(el).fontSize};line-height:1;color:var(--color-neutral-500)`;
+    layer.appendChild(g); return g;
+  });
+  S.tray = []; renderTray(); paint();
+  if (reduceMotion) ghosts.forEach(g => g.remove());
+  else ghosts.forEach((g, i) => {
+    g.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-out' });
+    g.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(14px)' }], { duration: 260, delay: 420 + i * 25, easing: 'ease-in', fill: 'forwards' }).onfinish = () => g.remove();
+  });
   const wordEl = cur >= 0 && verseEl.children[cur];
   if (!wordEl) return;
   if (revealing) reveal(wordEl);
@@ -395,7 +419,7 @@ function flyWord(tray, target) {
     const from = trayEl.querySelector(`[data-tray="${t.id}"]`), to = verseEl.querySelector(`[data-slot="${target}-${i}"]`);
     return from && to ? { ch: to.lastChild.textContent, i, a: from.getBoundingClientRect(), b: to.getBoundingClientRect(), fromSize: parseFloat(getComputedStyle(from).fontSize), toSize: parseFloat(getComputedStyle(to).fontSize), to } : null;
   }).filter(Boolean);
-  clearTray();
+  S.tray = []; renderTray();
   if (reduceMotion || !measured.length) return landAll(target);
   const stagger = Math.min(70, 400 / Math.max(tray.length, 1)), last = measured.length - 1;
   const pending = { n: measured.length };
@@ -448,7 +472,7 @@ function merge(to, b, burst) {
 
 function finishWord(target, wordEl) {
   reserved.delete(target);
-  S.strikes = 0; paint();
+  paint();
   if (wordEl && !reduceMotion) {
     const r = wordEl.getBoundingClientRect();
     const rule = document.createElement('div');
@@ -481,10 +505,10 @@ input.addEventListener('focus', () => { S.focused = true; paint(); });
 input.addEventListener('blur', () => { S.focused = false; paint(); });
 window.addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'Enter') { e.preventDefault(); if (!S.done) submit(); return; }
+  if (e.key === 'Enter') { e.preventDefault(); if (!S.done) sendTray(); return; }
   if (e.target === input) return;
   if (e.key === 'Backspace') return backspace();
-  if (e.key === ' ') { e.preventDefault(); if (!S.done) submit(); return; }
+  if (e.key === ' ') { e.preventDefault(); if (!S.done) sendTray(); return; }
   if (/^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); typeChar(e.key); }
 });
 app.addEventListener('click', focusInput);
