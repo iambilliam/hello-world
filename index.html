@@ -39,9 +39,11 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); }
 @keyframes caret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes tray-in { from { opacity: 0; transform: translateY(.18em); } }
+@keyframes listen { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
 #app {
   position: fixed; inset: 0;
@@ -54,17 +56,20 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--color-
 }
 
 header {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-3);
   padding-block: calc(var(--space-3) + env(safe-area-inset-top, 0px)) var(--space-3);
   font-family: var(--font-body); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
   color: var(--color-neutral-600);
 }
-.new-verse {
-  all: unset; cursor: pointer; color: var(--color-accent-700);
-  padding: 6px 0 3px; border-bottom: 1px solid var(--color-accent);
-  letter-spacing: inherit; text-transform: inherit;
+.modes { display: flex; gap: var(--space-3); }
+.mode, .new-verse {
+  all: unset; cursor: pointer; padding: 6px 0 3px; border-bottom: 1px solid transparent;
+  letter-spacing: inherit; text-transform: inherit; transition: color 200ms, border-color 200ms;
 }
-.new-verse:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.mode { color: var(--color-neutral-500); }
+.mode[aria-pressed="true"] { color: var(--color-text); border-color: var(--color-accent); }
+.new-verse { color: var(--color-accent-700); border-color: var(--color-accent); }
+.mode:focus-visible, .new-verse:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 
 main {
   min-height: 0; overflow: hidden;
@@ -88,10 +93,12 @@ main {
   column-gap: .32em; row-gap: .12em;
   line-height: 1.08; font-weight: 400; font-size: 32px;
 }
-.word { display: flex; white-space: nowrap; }
+.word { position: relative; display: flex; white-space: nowrap; }
 .slot { position: relative; display: inline-block; padding: 0 .015em; transition: color 400ms; }
-.slot i { position: absolute; left: .08em; right: .08em; bottom: -.04em; height: 1px; transition: background 300ms, height 300ms; }
+.slot i { position: absolute; left: .08em; right: .08em; bottom: -.04em; height: 1px; transition: background 300ms; }
 .punct { display: inline-block; transition: color 400ms; }
+/* The hesitation fuse: an accent rule under the word you are on, burning down to the reveal. */
+.fuse { position: absolute; left: .08em; right: .08em; bottom: -.04em; height: 1.5px; background: var(--color-accent); transform-origin: left center; pointer-events: none; }
 
 .hint {
   margin: 0; min-height: 1.6em; max-width: 34ch; text-align: center;
@@ -108,7 +115,11 @@ footer {
   min-height: 44px; max-width: 100%; overflow: hidden; font-size: 34px; line-height: 1;
 }
 #tray span[data-tray] { display: inline-block; min-width: .45em; text-align: center; transition: color 200ms; animation: tray-in 200ms cubic-bezier(.2,.8,.2,1); }
+#cursor { display: inline-flex; align-items: center; }
 #caret { display: inline-block; width: 1px; height: .85em; background: var(--color-accent); animation: caret 1.1s steps(1) infinite; }
+#mic { display: inline-flex; margin-left: .1em; color: var(--color-neutral-300); transition: color 300ms; }
+#mic svg { display: block; width: 22px; height: 22px; }
+#mic.on { color: var(--color-accent); animation: listen 1.6s ease-in-out infinite; }
 .prompt {
   margin: 0; font-family: var(--font-body); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
   color: var(--color-neutral-500);
@@ -122,7 +133,7 @@ footer {
 #layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
-  #caret, #tray span[data-tray] { animation: none; }
+  #caret, #mic.on, #tray span[data-tray] { animation: none; }
 }
 </style>
 </head>
@@ -130,6 +141,10 @@ footer {
 <div id="app">
   <header>
     <span>Letterpress</span>
+    <span class="modes" role="group" aria-label="Input">
+      <button class="mode" data-mode="typing" type="button" aria-pressed="true">Type</button>
+      <button class="mode" data-mode="voice" type="button" aria-pressed="false">Speak</button>
+    </span>
     <button class="new-verse" id="newVerse" type="button">New verse</button>
   </header>
   <main id="main">
@@ -144,7 +159,7 @@ footer {
   </main>
   <footer>
     <div class="rule"></div>
-    <div id="tray"><span id="caret"></span></div>
+    <div id="tray"><span id="cursor"><span id="caret"></span><span id="mic" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span></span></div>
     <p class="prompt" id="prompt"></p>
   </footer>
   <input id="input" aria-label="Type the verse" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="text" enterkeyhint="done">
@@ -199,19 +214,22 @@ const VERSES = [
 
 const PASSES = ['Full', 'Initials', 'From memory'];
 const FLIGHT_MS = 700;
+const HESITATION_MS = 3500; // pause this long on a hidden word and it is shown
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const touch = matchMedia('(pointer: coarse)').matches;
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const $ = id => document.getElementById(id);
-const app = $('app'), main = $('main'), verseEl = $('verse'), trayEl = $('tray'), caretEl = $('caret');
-const layer = $('layer'), input = $('input'), hintEl = $('hint');
+const app = $('app'), main = $('main'), verseEl = $('verse'), trayEl = $('tray'), cursorEl = $('cursor');
+const caretEl = $('caret'), micEl = $('mic'), layer = $('layer'), input = $('input'), hintEl = $('hint');
 
 const S = {
-  verse: null, words: [], filled: [], pass: 0, tray: [], strikes: 0, strikeWord: -1, revealed: new Set(),
-  done: false, typed: false, focused: false,
+  verse: null, words: [], filled: [], pass: 0, tray: [], revealed: new Set(), fuseWord: -1,
+  done: false, typed: false, missed: '', focused: false, mode: 'typing', voiceError: '',
 };
 const reserved = new Set();
 let seq = 0, bag = [];
+try { if (localStorage.getItem('letterpress-mode') === 'voice' && SR) S.mode = 'voice'; } catch (err) { /* no storage */ }
 
 // Shuffle-bag so every verse comes up once before any repeats.
 function randomVerse() {
@@ -222,7 +240,7 @@ function randomVerse() {
   return VERSES[bag.pop()];
 }
 
-// Each word keeps its punctuation for display; only letters are typed.
+// Each word keeps its punctuation for display; only letters are typed or said.
 function parse(text) {
   return text.split(/\s+/).filter(Boolean).map(raw => {
     let n = 0;
@@ -236,10 +254,10 @@ function loadVerse(v, pass = 0) {
   reset(pass);
 }
 function reset(pass) {
-  reserved.clear();
-  Object.assign(S, { pass, tray: [], strikes: 0, strikeWord: -1, revealed: new Set(), done: false });
+  reserved.clear(); disarmHesitation();
+  Object.assign(S, { pass, tray: [], revealed: new Set(), done: false, missed: '' });
   S.filled = S.words.map(w => Array(w.target.length).fill(false));
-  buildVerse(); clearInput(); paint(); fit();
+  buildVerse(); clearInput(); paint(); fit(); armHesitation();
 }
 
 function buildVerse() {
@@ -268,14 +286,24 @@ function nextWord() {
   for (let i = 0; i < S.words.length; i++) if (!wordDone(i) && !reserved.has(i)) return i;
   return -1;
 }
+const engaged = () => S.mode === 'voice' ? voiceWant : (S.focused || !touch);
+
+const VOICE_ERRORS = {
+  unsupported: 'Voice input isn’t available in this browser. Typing still works.',
+  blocked: 'The microphone is blocked here. Allow it in the browser, or open the page in a browser tab.',
+  nomic: 'No microphone was found.',
+  network: 'Voice recognition needs a connection.',
+  stalled: 'Listening keeps stopping. Tap to try again.',
+};
 
 // Apply the current state to the verse's letter slots and the labels.
 function paint() {
-  const nw = nextWord(), { pass, done, strikes, revealed } = S;
+  const nw = nextWord(), { pass, done, revealed, mode } = S;
   S.words.forEach((w, wi) => {
     const wordEl = verseEl.children[wi]; if (!wordEl) return;
-    const complete = wordDone(wi);
+    const complete = wordDone(wi), current = !done && wi === nw;
     for (const el of wordEl.children) {
+      if (el.classList.contains('fuse')) continue;
       if (el.classList.contains('punct')) {
         el.style.color = complete ? 'var(--color-text)' : 'var(--color-neutral-400)';
         continue;
@@ -283,39 +311,64 @@ function paint() {
       const i = Number(el.dataset.slot.split('-')[1]);
       const on = S.filled[wi][i];
       const shown = pass === 0 || (pass === 1 && i === 0) || revealed.has(wi);
-      const warn = !done && wi === S.strikeWord && strikes > 0;
       el.style.color = on ? 'var(--color-text)' : 'transparent';
-      el.style.webkitTextStroke = on || !shown ? '0px transparent' : `1px ${warn ? 'var(--color-accent-600)' : 'var(--color-neutral-400)'}`;
-      const rule = el.firstChild;
-      rule.style.background = warn ? 'var(--color-accent-600)' : !done && wi === nw ? 'var(--color-accent)' : (!on && pass > 0 ? 'var(--color-neutral-300)' : 'transparent');
-      rule.style.height = warn ? '2px' : '1px';
+      el.style.webkitTextStroke = on || !shown ? '0px transparent' : '1px var(--color-neutral-400)';
+      // While the fuse burns it carries the accent; the dashes under it go quiet.
+      el.firstChild.style.background = current && S.fuseWord !== wi ? 'var(--color-accent)' : (!on && pass > 0 ? 'var(--color-neutral-300)' : 'transparent');
     }
   });
   $('passLabel').textContent = PASSES[pass];
   [...$('marks').children].forEach((m, i) => m.classList.toggle('on', i <= pass));
+  const voice = mode === 'voice';
   hintEl.textContent = done ? (pass < 2 ? 'Once more, with less to go on.' : 'Well set. A new verse is coming.')
-    : strikes > 0 ? 'Not quite. Miss again and the word is revealed.'
+    : voice && S.voiceError ? VOICE_ERRORS[S.voiceError]
+    : S.missed ? (voice ? `Heard “${S.missed}”. Not quite.` : 'Not quite.')
     : revealed.has(nw) ? 'Revealed. Set it in place.'
-    : !S.typed ? 'Type each word in order. Space sends it to its place.'
-    : pass === 1 ? 'Only the initials remain.' : pass === 2 ? 'Set the verse from memory.' : '';
-  $('prompt').textContent = touch && !S.focused ? 'Tap anywhere to begin' : 'Type a word, then space';
+    : !S.typed ? (voice ? 'Say the verse. Each word finds its place as you go.' : 'Type each word in order. Space sends it to its place.')
+    : pass === 1 ? 'Only the initials remain.' : pass === 2 ? 'From memory. Hesitate, and the word is shown.' : '';
+  $('prompt').textContent = voice ? (S.voiceError ? 'Voice unavailable' : voiceWant ? 'Listening' : 'Tap anywhere to listen')
+    : touch && !S.focused ? 'Tap anywhere to begin' : 'Type a word, then space';
   caretEl.style.background = S.focused || !touch ? 'var(--color-accent)' : 'var(--color-neutral-300)';
+  caretEl.hidden = voice; micEl.hidden = !voice; micEl.classList.toggle('on', voice && voiceWant && !S.voiceError);
+  for (const b of document.querySelectorAll('.mode')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
 }
 
+// — the tray —
+// Letters waiting below the verse, in groups of one word each. Typing fills one group;
+// listening can show a few heard words at once. Group 0 is the word up next.
+function setTrayWords(words) {
+  const old = new Map(S.tray.map(t => [t.g + ':' + t.i, t]));
+  const next = [];
+  words.forEach((w, g) => [...w].forEach((ch, i) => {
+    const o = old.get(g + ':' + i);
+    next.push(o && o.ch === ch ? o : { id: ++seq, ch, g, i });
+  }));
+  if (words.join('')) { S.typed = true; if (ghosts.length) dropGhosts(ghosts, true); } // clear a missed word out of the way
+  S.tray = next; renderTray();
+}
+const setTray = letters => setTrayWords(letters ? [letters] : []);
+function removeGroup0() { S.tray = S.tray.filter(t => t.g !== 0); for (const t of S.tray) t.g--; }
+function clearInput() { S.tray = []; input.value = ''; consumed = 0; consumedText = ''; renderTray(); }
+
 function renderTray() {
-  // Keep the letters already in the tray (setTray keeps their ids) so only new ones animate in.
+  // Keep the letters already in the tray (their ids survive setTrayWords) so only new ones animate in.
   const ids = new Set(S.tray.map(t => t.id));
   for (const el of [...trayEl.querySelectorAll('[data-tray]')]) if (!ids.has(Number(el.dataset.tray))) el.remove();
+  const nextTray = el => { const n = el.nextElementSibling; return n && n.dataset.tray ? n : null; };
   let node = trayEl.querySelector('[data-tray]');
   for (const t of S.tray) {
-    if (node && Number(node.dataset.tray) === t.id) { node = node.nextElementSibling; if (node && !node.dataset.tray) node = null; continue; }
+    if (node && Number(node.dataset.tray) === t.id) { node = nextTray(node); continue; }
     const span = document.createElement('span');
     span.dataset.tray = t.id; span.textContent = t.ch;
-    trayEl.insertBefore(span, node || caretEl);
+    trayEl.insertBefore(span, node || cursorEl);
   }
-  const typed = S.tray.map(t => t.ch).join(''), nw = nextWord();
+  const typed = S.tray.filter(t => t.g === 0).map(t => t.ch).join(''), nw = nextWord();
   const onTrack = typed && nw >= 0 && S.words[nw].target.startsWith(typed);
-  for (const el of trayEl.querySelectorAll('[data-tray]')) el.style.color = onTrack ? 'var(--color-accent)' : 'var(--color-neutral-500)';
+  for (const t of S.tray) {
+    const el = trayEl.querySelector(`[data-tray="${t.id}"]`);
+    el.style.color = t.g === 0 && onTrack ? 'var(--color-accent)' : 'var(--color-neutral-500)';
+    el.style.marginLeft = t.g > 0 && t.i === 0 ? '.35em' : '';
+  }
 }
 
 // Size the verse to the largest type that fits the space left on screen.
@@ -342,12 +395,6 @@ function focusInput() { input.focus({ preventScroll: true }); }
 // that text was, in case the keyboard edits inside it); the words after that point,
 // up to the last space, get sent, and whatever follows the last space is the tray.
 let consumed = 0, consumedText = '';
-function clearInput() { S.tray = []; input.value = ''; consumed = 0; consumedText = ''; renderTray(); }
-function setTray(letters) {
-  S.tray = [...letters].map((ch, i) => S.tray[i] && S.tray[i].ch === ch ? S.tray[i] : { id: ++seq, ch });
-  if (letters) { S.typed = true; if (ghosts.length) dropGhosts(ghosts, true); } // clear a missed word out of the way
-  renderTray();
-}
 const lettersOf = str => str.replace(/[^a-zA-Z]/g, '').toLowerCase();
 function syncFromInput() {
   if (S.done || nextWord() < 0) return;
@@ -363,6 +410,7 @@ function syncFromInput() {
   }
   consumed = v.length - current.length; consumedText = v.slice(0, consumed);
   setTray(lettersOf(current)); paint();
+  armHesitation(); // typing is not hesitating
   // The last open word sets itself as soon as it's spelled.
   const open = S.words.map((_, i) => i).filter(i => !wordDone(i) && !reserved.has(i));
   if (open.length === 1 && S.words[open[0]].target === lettersOf(current)) sendTray();
@@ -375,17 +423,21 @@ function typeChar(ch) {
   if (!/^[a-zA-Z]$/.test(ch)) return;
   input.value += ch; syncFromInput();
 }
+
+// Send group 0 of the tray to the word up next: it flies into place, or misses.
 function submit() {
-  if (!S.tray.length) return;
-  const typed = S.tray.map(t => t.ch).join(''), target = nextWord();
-  if (target < 0) { S.tray = []; renderTray(); return; }
-  if (S.words[target].target !== typed) return miss();
+  const group = S.tray.filter(t => t.g === 0);
+  if (!group.length) return;
+  const typed = group.map(t => t.ch).join(''), target = nextWord();
+  if (target < 0) { removeGroup0(); renderTray(); return; }
+  if (S.words[target].target !== typed) return miss(group);
   reserved.add(target);
-  if (target === S.strikeWord) S.strikes = 0;
-  flyWord(S.tray.slice(), target);
+  S.missed = '';
+  flyWord(group, target);
+  armHesitation(); // the clock now runs for the word after this one
 }
 
-// Letters of a missed word, shaking in the overlay until they drop (sooner if typing resumes).
+// Letters of a missed word, lifted into the overlay until they drop (sooner if typing resumes).
 let ghosts = [];
 function dropGhosts(list, fast) {
   ghosts = ghosts.filter(g => !list.includes(g));
@@ -396,29 +448,24 @@ function dropGhosts(list, fast) {
   });
 }
 
-function miss() {
+function miss(group) {
   const cur = nextWord();
-  if (cur !== S.strikeWord) { S.strikes = 0; S.strikeWord = cur; } // strikes belong to one word
-  const revealing = cur >= 0 && S.strikes > 0 && !S.revealed.has(cur);
-  if (cur >= 0) { if (S.strikes === 0) S.strikes = 1; else { S.strikes = 0; if (revealing) S.revealed.add(cur); } }
-  // Lift the wrong letters out of the tray so the next word can start at once.
-  const mine = [...trayEl.querySelectorAll('[data-tray]')].map(el => {
+  S.missed = group.map(t => t.ch).join('');
+  const mine = group.map(t => trayEl.querySelector(`[data-tray="${t.id}"]`)).filter(Boolean).map(el => {
     const r = el.getBoundingClientRect(), g = document.createElement('span');
     g.textContent = el.textContent;
     g.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-size:${getComputedStyle(el).fontSize};line-height:1;color:var(--color-neutral-500)`;
     layer.appendChild(g); return g;
   });
   ghosts.push(...mine);
-  S.tray = []; renderTray(); paint();
-  if (reduceMotion) dropGhosts(mine, true);
+  removeGroup0(); renderTray(); paint();
+  if (reduceMotion || S.mode === 'voice') dropGhosts(mine, false); // a misheard word just slips away; no scolding
   else {
     mine.forEach(g => g.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-out' }));
     setTimeout(() => dropGhosts(mine, false), 420);
   }
   const wordEl = cur >= 0 && verseEl.children[cur];
-  if (!wordEl) return;
-  if (revealing) reveal(wordEl);
-  else wordEl.animate([{ opacity: 1 }, { opacity: .35 }, { opacity: 1 }, { opacity: .35 }, { opacity: 1 }], { duration: 700, easing: 'ease-in-out' });
+  if (wordEl) wordEl.animate([{ opacity: 1 }, { opacity: .35 }, { opacity: 1 }, { opacity: .35 }, { opacity: 1 }], { duration: 700, easing: 'ease-in-out' });
 }
 
 function reveal(wordEl) {
@@ -429,16 +476,43 @@ function reveal(wordEl) {
   ], { duration: 560, delay: i * 70, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
 }
 
-// Each typed letter arcs from the tray into its slot in the verse.
-function flyWord(tray, target) {
+// — hesitation —
+// A hidden word gets HESITATION_MS of quiet before it is shown. Any typing or speech
+// restarts the clock; sending a word starts it for the next one.
+let hesitation = 0, fuseEl = null;
+function armHesitation(fresh = true) {
+  const nw = nextWord();
+  if (!fresh && hesitation && S.fuseWord === nw) return;
+  disarmHesitation();
+  if (S.done || nw < 0 || !engaged()) return;
+  if (S.pass === 0 || S.revealed.has(nw)) return; // nothing hidden, nothing to reveal
+  S.fuseWord = nw;
+  fuseEl = document.createElement('b'); fuseEl.className = 'fuse';
+  verseEl.children[nw].appendChild(fuseEl);
+  if (!reduceMotion) fuseEl.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { duration: HESITATION_MS, easing: 'linear', fill: 'forwards' });
+  hesitation = setTimeout(() => { disarmHesitation(); revealWord(nw); }, HESITATION_MS);
+  paint();
+}
+function disarmHesitation() {
+  clearTimeout(hesitation); hesitation = 0; S.fuseWord = -1;
+  if (fuseEl) { fuseEl.remove(); fuseEl = null; }
+}
+function revealWord(wi) {
+  S.revealed.add(wi); S.missed = ''; paint();
+  const wordEl = verseEl.children[wi];
+  if (wordEl && !reduceMotion) reveal(wordEl);
+}
+
+// Each letter arcs from the tray into its slot in the verse.
+function flyWord(group, target) {
   const wordEl = verseEl.children[target];
-  const measured = tray.map((t, i) => {
+  const measured = group.map((t, i) => {
     const from = trayEl.querySelector(`[data-tray="${t.id}"]`), to = verseEl.querySelector(`[data-slot="${target}-${i}"]`);
     return from && to ? { ch: to.lastChild.textContent, i, a: from.getBoundingClientRect(), b: to.getBoundingClientRect(), fromSize: parseFloat(getComputedStyle(from).fontSize), toSize: parseFloat(getComputedStyle(to).fontSize), to } : null;
   }).filter(Boolean);
-  S.tray = []; renderTray();
+  removeGroup0(); renderTray();
   if (reduceMotion || !measured.length) return landAll(target);
-  const stagger = Math.min(70, 400 / Math.max(tray.length, 1)), last = measured.length - 1;
+  const stagger = Math.min(70, 400 / Math.max(group.length, 1)), last = measured.length - 1;
   const pending = { n: measured.length };
   measured.forEach((m, idx) => {
     const { ch, i, a, b, fromSize, toSize, to } = m;
@@ -489,6 +563,7 @@ function merge(to, b, burst) {
 
 function finishWord(target, wordEl) {
   reserved.delete(target);
+  S.filled[target] = S.filled[target].map(() => true);
   paint();
   if (wordEl && !reduceMotion) {
     const r = wordEl.getBoundingClientRect();
@@ -502,7 +577,7 @@ function finishWord(target, wordEl) {
 
 // Three passes per verse: full outline, initials only, then from memory.
 function complete() {
-  S.done = true; paint();
+  S.done = true; disarmHesitation(); paint();
   if (!reduceMotion) verseEl.querySelectorAll('.slot').forEach((el, i) => el.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-0.07em)' }, { transform: 'translateY(0)' }], { duration: 520, delay: 200 + i * 25, easing: 'ease-in-out' }));
   const token = S.verse;
   setTimeout(() => {
@@ -516,28 +591,137 @@ function complete() {
   }, 1900);
 }
 
+// — voice —
+// The recognizer's running transcript is the buffer here, the way the hidden input is
+// for typing. Words are read off it in order; a heard word that matches the word up
+// next flies into place as soon as it appears, even before the recognizer is sure of
+// it. A wrong word is only counted once the recognizer has settled on it.
+let rec = null, voiceWant = false, voiceCursor = 0, voiceSeen = '', restartTimer = 0, startedAt = 0, gotResult = false, quickEnds = 0, resumeVoice = false;
+const NUMBERS = { 0: 'zero', 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
+function speechWords(text) {
+  return text.toLowerCase().split(/\s+/).map(w => {
+    w = w.replace(/[^a-z0-9]/g, '');
+    if (/^\d+$/.test(w)) w = NUMBERS[w] || '';
+    return w.replace(/[^a-z]/g, '');
+  }).filter(Boolean);
+}
+// Spoken words that recognizers hand back differently from the KJV spelling.
+const ALIASES = [['the', 'thee'], ['thy', 'thigh'], ['o', 'oh'], ['handywork', 'handiwork'], ['saith', 'sayeth'], ['shewed', 'showed'], ['sheweth', 'showeth'], ['labour', 'labor']];
+const aliasOf = new Map(); ALIASES.forEach((set, i) => set.forEach(w => aliasOf.set(w, i)));
+function within1(a, b) { // true when one edit apart
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return a.slice(i + 1) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i) || a.slice(i) === b.slice(i + 1);
+}
+function similar(heard, target) {
+  if (heard === target) return true;
+  if (aliasOf.has(heard) && aliasOf.get(heard) === aliasOf.get(target)) return true;
+  return target.length >= 7 && within1(heard, target); // only the long, rare words get a letter of slack
+}
+// Match the heard words against the verse: one word, a word the recognizer split in
+// two or three ("whither so ever"), or one that it joined ("today" for "to day").
+function matchSpeech(heard) {
+  const nw = nextWord(); if (nw < 0 || !heard.length) return null;
+  const t1 = S.words[nw].target, t2 = S.words[nw + 1] && S.words[nw + 1].target;
+  if (similar(heard[0], t1)) return { used: 1, targets: [t1] };
+  for (const n of [2, 3]) if (heard.length >= n && similar(heard.slice(0, n).join(''), t1)) return { used: n, targets: [t1] };
+  if (t2 && similar(heard[0], t1 + t2)) return { used: 1, targets: [t1, t2] };
+  return null;
+}
+function onSpeech(e) {
+  gotResult = true;
+  const flat = [];
+  for (let r = 0; r < e.results.length; r++) {
+    const res = e.results[r];
+    for (const w of speechWords(res[0].transcript)) flat.push({ w, final: res.isFinal });
+  }
+  const text = flat.map(x => x.w + (x.final ? '.' : '')).join(' ');
+  if (text !== voiceSeen) { voiceSeen = text; armHesitation(); } // speech is not hesitating
+  let c = Math.min(voiceCursor, flat.length);
+  const pendingOf = () => flat.slice(c).map(x => x.w);
+  setTrayWords(pendingOf());
+  while (c < flat.length && !S.done && nextWord() >= 0) {
+    const m = matchSpeech(pendingOf().slice(0, 3));
+    if (m) {
+      setTrayWords([...m.targets, ...pendingOf().slice(m.used)]); // the heard letters become the verse's own, then fly
+      m.targets.forEach(() => submit());
+      c += m.used; continue;
+    }
+    if (flat[c].final) { submit(); c++; continue; } // settled and wrong
+    break; // still provisional: wait for the recognizer
+  }
+  voiceCursor = c;
+  setTrayWords(pendingOf().slice(0, 3)); paint();
+}
+function startListening() {
+  if (S.mode !== 'voice' || rec) return;
+  if (!SR) { S.voiceError = 'unsupported'; paint(); return; }
+  clearTimeout(restartTimer);
+  rec = new SR();
+  rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+  voiceCursor = 0; voiceSeen = ''; gotResult = false;
+  rec.onstart = () => { startedAt = Date.now(); S.voiceError = ''; paint(); armHesitation(false); };
+  rec.onresult = onSpeech;
+  rec.onerror = ev => {
+    const code = ev.error;
+    if (code === 'not-allowed' || code === 'service-not-allowed') S.voiceError = 'blocked';
+    else if (code === 'audio-capture') S.voiceError = 'nomic';
+    else if (code === 'network') S.voiceError = 'network';
+    else return; // no-speech, aborted: the session ends and restarts below
+    voiceWant = false; disarmHesitation(); paint();
+  };
+  rec.onend = () => {
+    rec = null;
+    quickEnds = !gotResult && Date.now() - startedAt < 1000 ? quickEnds + 1 : 0;
+    if (quickEnds >= 3) { voiceWant = false; S.voiceError = S.voiceError || 'stalled'; disarmHesitation(); }
+    if (voiceWant && S.mode === 'voice' && document.visibilityState === 'visible') restartTimer = setTimeout(startListening, 300);
+    paint();
+  };
+  voiceWant = true; S.voiceError = '';
+  try { rec.start(); } catch (err) { rec = null; voiceWant = false; S.voiceError = 'blocked'; }
+  paint();
+}
+function stopListening() {
+  voiceWant = false; clearTimeout(restartTimer); quickEnds = 0;
+  if (rec) { const r = rec; rec = null; try { r.abort(); } catch (err) { /* already stopped */ } }
+  disarmHesitation(); paint();
+}
+
+function setMode(mode) {
+  if (mode === S.mode) return;
+  if (mode === 'voice' && !SR) { S.voiceError = 'unsupported'; S.mode = 'voice'; stopListening(); input.blur(); return; }
+  S.mode = mode; S.voiceError = ''; S.missed = '';
+  try { localStorage.setItem('letterpress-mode', mode); } catch (err) { /* no storage */ }
+  clearInput(); disarmHesitation();
+  if (mode === 'voice') { input.blur(); startListening(); }
+  else { stopListening(); focusInput(); }
+  paint(); armHesitation();
+}
+// A tap anywhere opens the keyboard, or starts listening.
+function begin() { if (S.mode === 'voice') { if (!voiceWant) startListening(); } else focusInput(); }
+
 // — wiring —
 input.addEventListener('input', syncFromInput);
-input.addEventListener('focus', () => { S.focused = true; paint(); });
-input.addEventListener('blur', () => { S.focused = false; paint(); });
+input.addEventListener('focus', () => { S.focused = true; paint(); armHesitation(); });
+input.addEventListener('blur', () => { S.focused = false; paint(); if (S.mode === 'typing') disarmHesitation(); });
 window.addEventListener('keydown', e => {
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.metaKey || e.ctrlKey || e.altKey || S.mode === 'voice') return;
   if (e.key === 'Enter') { e.preventDefault(); if (!S.done) sendTray(); return; }
   if (e.target === input) return;
   if (e.key === 'Backspace') return backspace();
   if (e.key === ' ') { e.preventDefault(); if (!S.done) sendTray(); return; }
   if (/^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); typeChar(e.key); }
 });
-app.addEventListener('click', focusInput);
+app.addEventListener('click', begin);
 
-const newBtn = $('newVerse');
-newBtn.addEventListener('pointerdown', e => e.preventDefault()); // keep the keyboard open
-newBtn.addEventListener('click', e => {
+for (const b of document.querySelectorAll('.mode, .new-verse')) b.addEventListener('pointerdown', e => e.preventDefault()); // keep the keyboard as it is
+for (const b of document.querySelectorAll('.mode')) b.addEventListener('click', e => { e.stopPropagation(); setMode(b.dataset.mode); });
+$('newVerse').addEventListener('click', e => {
   e.stopPropagation();
-  layer.textContent = '';
+  layer.textContent = ''; ghosts = [];
   loadVerse(randomVerse());
   verseEl.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' });
-  focusInput();
+  begin();
 });
 
 // Keep the app inside the visible area when the on-screen keyboard opens.
@@ -549,9 +733,13 @@ function onViewport() {
 if (window.visualViewport) { visualViewport.addEventListener('resize', onViewport); visualViewport.addEventListener('scroll', onViewport); }
 window.addEventListener('resize', fit);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { disarmHesitation(); if (voiceWant) { stopListening(); resumeVoice = true; } }
+  else { if (resumeVoice && S.mode === 'voice') { resumeVoice = false; startListening(); } armHesitation(); }
+});
 
 loadVerse(randomVerse());
-if (!touch) focusInput();
+if (S.mode === 'typing' && !touch) focusInput();
 </script>
 </body>
 </html>
