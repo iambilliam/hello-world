@@ -22,10 +22,14 @@
   --color-neutral-400: #bab6b6;
   --color-neutral-500: #9b9797;
   --color-neutral-600: #7d7979;
+  --color-neutral-900: #2d2b2b;
   --color-accent-200: #ffe3bf;
+  --color-accent-300: #facb8d;
   --color-accent-600: #a06f24;
   --color-accent-700: #7d5411;
   --color-accent-800: #5a3b0a;
+  --color-accent-900: #3a270d;
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
 
   --font-heading: "Cormorant Garamond", Georgia, "Times New Roman", serif;
   --font-body: "Lora", Georgia, "Times New Roman", serif;
@@ -35,6 +39,8 @@
   --space-3: 13.8px;
   --space-4: 18.4px;
   --space-6: 27.6px;
+  --radius-md: 4px;
+  --radius-lg: 7px;
   color-scheme: light;
 }
 
@@ -61,7 +67,7 @@ header {
   font-family: var(--font-body); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
   color: var(--color-neutral-600);
 }
-.modes { display: flex; gap: var(--space-3); }
+.modes, .actions { display: flex; align-items: center; gap: var(--space-3); }
 .mode, .new-verse {
   all: unset; cursor: pointer; padding: 6px 0 3px; border-bottom: 1px solid transparent;
   letter-spacing: inherit; text-transform: inherit; transition: color 200ms, border-color 200ms;
@@ -69,7 +75,10 @@ header {
 .mode { color: var(--color-neutral-500); }
 .mode[aria-pressed="true"] { color: var(--color-text); border-color: var(--color-accent); }
 .new-verse { color: var(--color-accent-700); border-color: var(--color-accent); }
-.mode:focus-visible, .new-verse:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.icon-btn { all: unset; cursor: pointer; display: inline-flex; padding: 4px; border-radius: var(--radius-md); color: var(--color-neutral-600); transition: color 200ms; }
+.icon-btn:hover { color: var(--color-accent-700); }
+.icon-btn svg { display: block; width: 16px; height: 16px; }
+.mode:focus-visible, .new-verse:focus-visible, .icon-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 
 main {
   min-height: 0; overflow: hidden;
@@ -130,7 +139,52 @@ footer {
   font-size: 16px; border: 0; padding: 0; margin: 0; outline: none;
   color: transparent; caret-color: transparent; background: transparent; pointer-events: none;
 }
-#layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+#layer { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+
+/* — animation settings: a sheet from the bottom on phones, a dialog on wider screens — */
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 20; display: grid; align-items: end;
+  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+}
+.sheet {
+  width: 100%; max-height: 88%; overflow: auto;
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-4) max(16px, env(safe-area-inset-left, 0px)) calc(var(--space-4) + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  background: var(--color-surface); border: 1px solid var(--color-divider); border-bottom: 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0; box-shadow: var(--shadow-lg);
+  font-family: var(--font-body); font-size: 13px; color: var(--color-text);
+}
+@media (min-width: 600px) {
+  .sheet-backdrop { align-items: center; justify-items: center; padding: var(--space-4); }
+  .sheet { width: min(440px, 100%); border-radius: var(--radius-lg); border-bottom: 1px solid var(--color-divider); padding: var(--space-4); }
+}
+.sheet-head { display: flex; align-items: baseline; justify-content: space-between; }
+.sheet-head h2 { margin: 0; font-family: var(--font-heading); font-weight: 600; font-size: 22px; letter-spacing: -0.015em; }
+.sheet-done { all: unset; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 14px; color: var(--color-accent); padding: 6px 8px; border-radius: var(--radius-md); }
+.sheet-done:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.sheet-done:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.stage {
+  position: relative; height: 132px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3);
+  background: var(--color-bg); border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+  font-family: var(--font-heading); user-select: none; -webkit-user-select: none;
+}
+.stage-word { font-size: 44px; line-height: 1.08; }
+.stage-tray { display: flex; gap: 2px; min-height: 1em; font-size: 24px; line-height: 1; color: var(--color-neutral-500); }
+.stage-tray span { display: inline-block; min-width: .45em; text-align: center; }
+.stage-cue { position: absolute; right: 10px; bottom: 8px; margin: 0; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--color-neutral-500); }
+#groups { display: flex; flex-direction: column; gap: var(--space-4); }
+.group { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.group legend { padding: 0; margin-bottom: var(--space-2); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-accent); }
+.group legend span { color: var(--color-neutral-500); letter-spacing: .04em; text-transform: none; margin-left: var(--space-2); }
+.seg { display: flex; overflow: hidden; border: 1px solid var(--color-divider); border-radius: var(--radius-md); }
+.seg-opt { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; padding: 8px 10px; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 14px; }
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
+.seg-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.seg-opt:has(input:checked) { color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.seg-opt:not(:has(input:checked)):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.note { margin: 0; min-height: 1.5em; font-style: italic; font-size: 12px; color: var(--color-neutral-600); }
 
 @media (prefers-reduced-motion: reduce) {
   #caret, #mic.on, #tray span[data-tray] { animation: none; }
@@ -145,7 +199,10 @@ footer {
       <button class="mode" data-mode="typing" type="button" aria-pressed="true">Type</button>
       <button class="mode" data-mode="voice" type="button" aria-pressed="false">Speak</button>
     </span>
-    <button class="new-verse" id="newVerse" type="button">New verse</button>
+    <span class="actions">
+      <button class="new-verse" id="newVerse" type="button">New verse</button>
+      <button class="icon-btn" id="settingsBtn" type="button" aria-label="Animation settings"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12"></path><circle cx="10" cy="4" r="1.7" fill="var(--color-bg)"></circle><circle cx="5.5" cy="8" r="1.7" fill="var(--color-bg)"></circle><circle cx="11" cy="12" r="1.7" fill="var(--color-bg)"></circle></svg></button>
+    </span>
   </header>
   <main id="main">
     <div class="meta">
@@ -163,7 +220,21 @@ footer {
     <p class="prompt" id="prompt"></p>
   </footer>
   <input id="input" aria-label="Type the verse" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="text" enterkeyhint="done">
-  <div id="layer"></div>
+</div>
+<div id="layer"></div>
+<div class="sheet-backdrop" id="settings" hidden>
+  <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-head">
+      <h2 id="sheetTitle">Animation</h2>
+      <button class="sheet-done" id="settingsDone" type="button">Done</button>
+    </div>
+    <div class="stage" id="stage" role="button" aria-label="Play the preview again">
+      <div class="stage-word" id="stageWord"></div>
+      <div class="stage-tray" id="stageTray"></div>
+      <p class="stage-cue" id="stageCue">Tap to replay</p>
+    </div>
+    <div id="groups"></div>
+  </section>
 </div>
 
 <script>
@@ -219,17 +290,41 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const touch = matchMedia('(pointer: coarse)').matches;
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
+// The three moments that can be styled, with a line on each option for the settings sheet.
+const ANIMS = {
+  entry: { label: 'Entering', about: 'a word lands in the verse', options: {
+    Arc: 'Letters lob in from the tray and settle with a ring.',
+    Stamp: 'Pressed straight in, with a bloom of ink.',
+    Ink: 'Droplets gather and pool into each letter.',
+  } },
+  reveal: { label: 'Revealing', about: 'a word you hesitated on is shown', options: {
+    Unfold: 'Letters tumble up into place, one by one.',
+    Develop: 'The word sharpens as a light passes over it.',
+    Bleed: 'Ink rises through the letters from the baseline.',
+  } },
+  hide: { label: 'Hiding', about: 'the verse clears for the next pass', options: {
+    Fade: 'Letters dissolve, word by word.',
+    Erase: 'An eraser sweeps across the verse.',
+    Scatter: 'The type loosens and falls away.',
+  } },
+};
+
 const $ = id => document.getElementById(id);
 const app = $('app'), main = $('main'), verseEl = $('verse'), trayEl = $('tray'), cursorEl = $('cursor');
 const caretEl = $('caret'), micEl = $('mic'), layer = $('layer'), input = $('input'), hintEl = $('hint');
 
 const S = {
   verse: null, words: [], filled: [], pass: 0, tray: [], revealed: new Set(), fuseWord: -1,
-  done: false, typed: false, missed: '', focused: false, mode: 'typing', voiceError: '',
+  done: false, typed: false, missed: '', focused: false, mode: 'typing', voiceError: '', settingsOpen: false,
+  anim: { entry: 'Arc', reveal: 'Unfold', hide: 'Fade' },
 };
 const reserved = new Set();
 let seq = 0, bag = [];
-try { if (localStorage.getItem('letterpress-mode') === 'voice' && SR) S.mode = 'voice'; } catch (err) { /* no storage */ }
+try {
+  if (localStorage.getItem('letterpress-mode') === 'voice' && SR) S.mode = 'voice';
+  const saved = JSON.parse(localStorage.getItem('letterpress-anim') || '{}');
+  for (const k in ANIMS) if (saved[k] in ANIMS[k].options) S.anim[k] = saved[k];
+} catch (err) { /* no storage */ }
 
 // Shuffle-bag so every verse comes up once before any repeats.
 function randomVerse() {
@@ -260,24 +355,26 @@ function reset(pass) {
   buildVerse(); clearInput(); paint(); fit(); armHesitation();
 }
 
+// A word of the verse: letter slots (each with its rule underneath) and punctuation.
+function makeWord(parts, wi) {
+  const wordEl = document.createElement('div');
+  wordEl.className = 'word'; wordEl.dataset.word = wi;
+  for (const p of parts) {
+    const span = document.createElement('span');
+    if (p.letter) {
+      span.className = 'slot'; span.dataset.slot = `${wi}-${p.i}`;
+      span.appendChild(document.createElement('i'));
+      span.appendChild(document.createTextNode(p.ch));
+    } else {
+      span.className = 'punct'; span.textContent = p.ch;
+    }
+    wordEl.appendChild(span);
+  }
+  return wordEl;
+}
 function buildVerse() {
   verseEl.textContent = '';
-  S.words.forEach((w, wi) => {
-    const wordEl = document.createElement('div');
-    wordEl.className = 'word'; wordEl.dataset.word = wi;
-    for (const p of w.parts) {
-      const span = document.createElement('span');
-      if (p.letter) {
-        span.className = 'slot'; span.dataset.slot = `${wi}-${p.i}`;
-        span.appendChild(document.createElement('i'));
-        span.appendChild(document.createTextNode(p.ch));
-      } else {
-        span.className = 'punct'; span.textContent = p.ch;
-      }
-      wordEl.appendChild(span);
-    }
-    verseEl.appendChild(wordEl);
-  });
+  S.words.forEach((w, wi) => verseEl.appendChild(makeWord(w.parts, wi)));
   $('ref').textContent = S.verse[0];
 }
 
@@ -286,7 +383,7 @@ function nextWord() {
   for (let i = 0; i < S.words.length; i++) if (!wordDone(i) && !reserved.has(i)) return i;
   return -1;
 }
-const engaged = () => S.mode === 'voice' ? voiceWant : (S.focused || !touch);
+const engaged = () => !S.settingsOpen && (S.mode === 'voice' ? voiceWant : (S.focused || !touch));
 
 const VOICE_ERRORS = {
   unsupported: 'Voice input isn’t available in this browser. Typing still works.',
@@ -397,7 +494,7 @@ function focusInput() { input.focus({ preventScroll: true }); }
 let consumed = 0, consumedText = '';
 const lettersOf = str => str.replace(/[^a-zA-Z]/g, '').toLowerCase();
 function syncFromInput() {
-  if (S.done || nextWord() < 0) return;
+  if (S.done || S.settingsOpen || nextWord() < 0) return;
   const v = input.value;
   let keep = 0; const lim = Math.min(consumed, v.length);
   while (keep < lim && v[keep] === consumedText[keep]) keep++;
@@ -468,14 +565,6 @@ function miss(group) {
   if (wordEl) wordEl.animate([{ opacity: 1 }, { opacity: .35 }, { opacity: 1 }, { opacity: .35 }, { opacity: 1 }], { duration: 700, easing: 'ease-in-out' });
 }
 
-function reveal(wordEl) {
-  [...wordEl.querySelectorAll('.slot')].forEach((el, i) => el.animate([
-    { opacity: 0, transform: 'translateY(.22em) rotate(-4deg)', filter: 'blur(5px)' },
-    { opacity: 1, transform: 'translateY(-.03em) rotate(0deg)', filter: 'blur(0px)', offset: .7 },
-    { opacity: 1, transform: 'translateY(0) rotate(0deg)', filter: 'blur(0px)' }
-  ], { duration: 560, delay: i * 70, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
-}
-
 // — hesitation —
 // A hidden word gets HESITATION_MS of quiet before it is shown. Any typing or speech
 // restarts the clock; sending a word starts it for the next one.
@@ -500,65 +589,182 @@ function disarmHesitation() {
 function revealWord(wi) {
   S.revealed.add(wi); S.missed = ''; paint();
   const wordEl = verseEl.children[wi];
-  if (wordEl && !reduceMotion) reveal(wordEl);
+  if (wordEl && !reduceMotion) animateReveal(S.anim.reveal, wordEl);
 }
 
-// Each letter arcs from the tray into its slot in the verse.
-function flyWord(group, target) {
-  const wordEl = verseEl.children[target];
-  const measured = group.map((t, i) => {
-    const from = trayEl.querySelector(`[data-tray="${t.id}"]`), to = verseEl.querySelector(`[data-slot="${target}-${i}"]`);
-    return from && to ? { ch: to.lastChild.textContent, i, a: from.getBoundingClientRect(), b: to.getBoundingClientRect(), fromSize: parseFloat(getComputedStyle(from).fontSize), toSize: parseFloat(getComputedStyle(to).fontSize), to } : null;
-  }).filter(Boolean);
-  removeGroup0(); renderTray();
-  if (reduceMotion || !measured.length) return landAll(target);
-  const stagger = Math.min(70, 400 / Math.max(group.length, 1)), last = measured.length - 1;
-  const pending = { n: measured.length };
-  measured.forEach((m, idx) => {
-    const { ch, i, a, b, fromSize, toSize, to } = m;
+// ═══ Animations ═══
+// Each takes a style name from ANIMS and works on any word built by makeWord, so the
+// settings sheet can play them on its sample word exactly as the verse does.
+const fixed = (left, top, w, h) => `position:fixed;left:${left}px;top:${top}px;width:${w}px;height:${h}px;`;
+
+// Entering: letters travel from the tray (pairs[i].a) into their slots (pairs[i].to).
+function animateEntry(style, pairs, { onLand, done }) {
+  const ms = FLIGHT_MS, last = pairs.length - 1;
+  const stagger = style === 'Stamp' ? 0 : Math.min(70, 400 / Math.max(pairs.length, 1));
+  let left = pairs.length;
+  const land = (m, idx) => { onLand(m, idx === last); if (--left <= 0) done(); };
+  pairs.forEach((m, idx) => {
+    const { ch, a, b, fromSize, toSize } = m, delay = idx * stagger;
     const dx = (a.left + a.width / 2) - (b.left + b.width / 2), dy = (a.top + a.height / 2) - (b.top + b.height / 2);
-    const arc = Math.min(140, Math.hypot(dx, dy) * 0.3);
+    if (style === 'Ink') {
+      const ax = a.left + a.width / 2, ay = a.top + a.height / 2, bx = b.left + b.width / 2, by = b.top + b.height / 2;
+      const count = 9; let drops = count;
+      for (let k = 0; k < count; k++) {
+        const dot = document.createElement('div'), sz = 2 + Math.random() * 3;
+        const sx = (Math.random() - .5) * a.width, sy = (Math.random() - .5) * a.height;
+        const ex = (Math.random() - .5) * b.width * .8, ey = (Math.random() - .5) * b.height * .6;
+        const bend = (Math.random() - .5) * 160;
+        dot.style.cssText = `${fixed(ax + sx, ay + sy, sz, sz)}margin:${-sz / 2}px;border-radius:50%;background:var(--color-accent);opacity:0`;
+        layer.appendChild(dot);
+        const tx = bx + ex - (ax + sx), ty = by + ey - (ay + sy);
+        dot.animate([
+          { transform: 'translate(0,0) scale(1)', opacity: 1 },
+          { transform: `translate(${tx * .5 + bend}px, ${ty * .5}px) scale(1.2)`, opacity: .9, offset: .5 },
+          { transform: `translate(${tx}px, ${ty}px) scale(.3)`, opacity: 0 }
+        ], { duration: ms * (.85 + Math.random() * .3), delay: delay + k * 18, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' }).onfinish = () => { dot.remove(); if (--drops === 0) land(m, idx); };
+      }
+      return;
+    }
     const outer = document.createElement('div');
-    outer.style.cssText = `position:fixed;left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px;transform-origin:center;will-change:transform;transform:translate(${dx}px, ${dy}px) scale(${fromSize / toSize})`;
+    outer.style.cssText = `${fixed(b.left, b.top, b.width, b.height)}transform-origin:center;will-change:transform;transform:translate(${dx}px, ${dy}px) scale(${fromSize / toSize})`;
     const inner = document.createElement('span');
     inner.textContent = ch;
     inner.style.cssText = `display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-family:var(--font-heading);font-size:${toSize}px;line-height:1;color:var(--color-accent);will-change:transform`;
     outer.appendChild(inner); layer.appendChild(outer);
-    const delay = idx * stagger;
-    outer.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${fromSize / toSize})` }, { transform: 'translate(0, 0) scale(1)' }], { duration: FLIGHT_MS, delay, easing: 'cubic-bezier(.45,0,.15,1)', fill: 'forwards' });
-    inner.animate([{ transform: 'translateY(0) rotate(-6deg)', easing: 'ease-out' }, { transform: `translateY(${-arc}px) rotate(2deg)`, offset: .5, easing: 'ease-in' }, { transform: 'translateY(0) rotate(0deg)' }], { duration: FLIGHT_MS, delay, fill: 'forwards' });
-    inner.animate([{ color: 'var(--color-accent)', filter: 'blur(0px)' }, { color: 'var(--color-accent)', filter: 'blur(0.6px)', offset: .5 }, { color: 'var(--color-accent-700)', filter: 'blur(0px)' }], { duration: FLIGHT_MS, delay, fill: 'forwards' }).onfinish = () => {
-      outer.remove();
-      S.filled[target][i] = true; paint();
-      merge(to, b, idx === last);
-      if (--pending.n <= 0) finishWord(target, wordEl);
-    };
+    if (style === 'Stamp') {
+      outer.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${fromSize / toSize})` }, { transform: 'translate(0, 0) scale(1)' }], { duration: ms, easing: 'cubic-bezier(.3,.9,.25,1)', fill: 'forwards' });
+      inner.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.18)', offset: .8 }, { transform: 'scale(1)' }], { duration: ms, easing: 'ease-in-out', fill: 'forwards' });
+      inner.animate([{ color: 'var(--color-accent)', filter: 'blur(0px)', opacity: 1 }, { color: 'var(--color-accent)', filter: 'blur(2px)', opacity: .7, offset: .5 }, { color: 'var(--color-accent-800)', filter: 'blur(0px)', opacity: 1 }], { duration: ms, fill: 'forwards' }).onfinish = () => { outer.remove(); land(m, idx); };
+      return;
+    }
+    const arc = Math.min(140, Math.hypot(dx, dy) * 0.3);
+    outer.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${fromSize / toSize})` }, { transform: 'translate(0, 0) scale(1)' }], { duration: ms, delay, easing: 'cubic-bezier(.45,0,.15,1)', fill: 'forwards' });
+    inner.animate([{ transform: 'translateY(0) rotate(-6deg)', easing: 'ease-out' }, { transform: `translateY(${-arc}px) rotate(2deg)`, offset: .5, easing: 'ease-in' }, { transform: 'translateY(0) rotate(0deg)' }], { duration: ms, delay, fill: 'forwards' });
+    inner.animate([{ color: 'var(--color-accent)', filter: 'blur(0px)' }, { color: 'var(--color-accent)', filter: 'blur(0.6px)', offset: .5 }, { color: 'var(--color-accent-700)', filter: 'blur(0px)' }], { duration: ms, delay, fill: 'forwards' }).onfinish = () => { outer.remove(); land(m, idx); };
   });
 }
-function landAll(target) {
-  S.filled[target] = S.filled[target].map(() => true);
-  paint(); finishWord(target, null);
-}
 
-function merge(to, b, burst) {
+// The landing itself: how a slot takes its letter (burst = the word's last letter).
+function merge(style, to, b, burst) {
+  const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+  if (style === 'Stamp') {
+    to.animate([
+      { transform: 'scale(1.22) translateY(-0.03em)', filter: 'blur(3px)', opacity: .5, color: 'var(--color-accent-800)' },
+      { transform: 'scale(.97) translateY(0.01em)', filter: 'blur(0px)', opacity: 1, color: 'var(--color-accent-900)', offset: .45 },
+      { transform: 'scale(1) translateY(0)', filter: 'blur(0px)', opacity: 1, color: 'var(--color-text)' }
+    ], { duration: 560, easing: 'cubic-bezier(.2,.9,.3,1)' });
+    const r = Math.max(b.width, b.height) * 1.4, bloom = document.createElement('div');
+    bloom.style.cssText = `${fixed(cx - r / 2, cy - r / 2, r, r)}border-radius:50%;background:radial-gradient(circle, var(--color-accent-200) 0%, transparent 65%);opacity:0`;
+    layer.appendChild(bloom);
+    bloom.animate([{ transform: 'scale(.4)', opacity: 0 }, { transform: 'scale(1)', opacity: .9, offset: .3 }, { transform: 'scale(1.15)', opacity: 0 }], { duration: 900, easing: 'ease-out', fill: 'forwards' }).onfinish = () => bloom.remove();
+    if (!burst) return;
+    const line = document.createElement('div');
+    line.style.cssText = `${fixed(cx - r, cy + b.height * .42, r * 2, 1)}background:var(--color-accent);transform-origin:center;transform:scaleX(0)`;
+    layer.appendChild(line);
+    line.animate([{ transform: 'scaleX(0)', opacity: 1 }, { transform: 'scaleX(1)', opacity: .8, offset: .4 }, { transform: 'scaleX(1.1)', opacity: 0 }], { duration: 800, easing: 'cubic-bezier(.2,.8,.3,1)', fill: 'forwards' }).onfinish = () => line.remove();
+    return;
+  }
+  if (style === 'Ink') {
+    to.animate([
+      { clipPath: 'inset(100% 0 0 0)', filter: 'blur(2px)', color: 'var(--color-accent-700)' },
+      { clipPath: 'inset(0 0 0 0)', filter: 'blur(1px)', color: 'var(--color-accent-800)', offset: .6 },
+      { clipPath: 'inset(0 0 0 0)', filter: 'blur(0px)', color: 'var(--color-text)' }
+    ], { duration: 820, easing: 'cubic-bezier(.3,.7,.2,1)' });
+    if (!burst) return;
+    const r = b.height * .5, pool = document.createElement('div');
+    pool.style.cssText = `${fixed(cx - r, b.top + b.height * .9 - r * .15, r * 2, r * .3)}border-radius:50%;background:radial-gradient(ellipse, var(--color-accent-300) 0%, transparent 70%);opacity:0`;
+    layer.appendChild(pool);
+    pool.animate([{ transform: 'scale(.3)', opacity: 0 }, { transform: 'scale(1)', opacity: .8, offset: .35 }, { transform: 'scale(1.3)', opacity: 0 }], { duration: 1000, easing: 'ease-out', fill: 'forwards' }).onfinish = () => pool.remove();
+    return;
+  }
   to.animate([
     { transform: 'scale(1.12)', color: 'var(--color-accent)' },
     { transform: 'scale(0.97)', color: 'var(--color-accent-800)', offset: .55 },
     { transform: 'scale(1)', color: 'var(--color-text)' }
   ], { duration: 620, easing: 'cubic-bezier(.2,.8,.2,1)' });
-  const cx = b.left + b.width / 2, cy = b.top + b.height / 2, r = Math.max(b.width, b.height * .7);
-  const ring = document.createElement('div');
-  ring.style.cssText = `position:fixed;left:${cx - r / 2}px;top:${cy - r / 2}px;width:${r}px;height:${r}px;border:1px solid var(--color-accent);border-radius:50%;opacity:0`;
+  const r = Math.max(b.width, b.height * .7), ring = document.createElement('div');
+  ring.style.cssText = `${fixed(cx - r / 2, cy - r / 2, r, r)}border:1px solid var(--color-accent);border-radius:50%;opacity:0`;
   layer.appendChild(ring);
   ring.animate([{ transform: 'scale(.35)', opacity: .9 }, { transform: 'scale(1.6)', opacity: 0 }], { duration: 700, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }).onfinish = () => ring.remove();
   if (!burst) return;
   for (let k = 0; k < 7; k++) {
     const dot = document.createElement('div');
     const ang = (Math.PI * 2 * k) / 7 + Math.random() * .6, d = r * (.7 + Math.random() * .5);
-    dot.style.cssText = `position:fixed;left:${cx}px;top:${cy}px;width:3px;height:3px;margin:-1.5px;border-radius:50%;background:var(--color-accent)`;
+    dot.style.cssText = `${fixed(cx, cy, 3, 3)}margin:-1.5px;border-radius:50%;background:var(--color-accent)`;
     layer.appendChild(dot);
     dot.animate([{ transform: 'translate(0,0) scale(1)', opacity: 1 }, { transform: `translate(${Math.cos(ang) * d}px, ${Math.sin(ang) * d}px) scale(.2)`, opacity: 0 }], { duration: 560 + Math.random() * 200, easing: 'cubic-bezier(.1,.7,.3,1)', fill: 'forwards' }).onfinish = () => dot.remove();
   }
+}
+
+// Revealing: the word's outline comes into view.
+function animateReveal(style, wordEl) {
+  const slots = [...wordEl.querySelectorAll('.slot')];
+  if (style === 'Develop') {
+    wordEl.animate([{ filter: 'blur(14px)', opacity: .2 }, { filter: 'blur(3px)', opacity: .7, offset: .55 }, { filter: 'blur(0px)', opacity: 1 }], { duration: 1100, easing: 'cubic-bezier(.3,.6,.2,1)' });
+    const r = wordEl.getBoundingClientRect(), bar = document.createElement('div');
+    bar.style.cssText = `${fixed(r.left, r.top - 6, 1, r.height + 12)}background:var(--color-accent);box-shadow:0 0 14px 2px var(--color-accent-200);opacity:0`;
+    layer.appendChild(bar);
+    bar.animate([{ transform: 'translateX(0)', opacity: 0 }, { opacity: 1, offset: .1 }, { opacity: 1, offset: .9 }, { transform: `translateX(${r.width}px)`, opacity: 0 }], { duration: 1000, easing: 'cubic-bezier(.4,0,.3,1)', fill: 'forwards' }).onfinish = () => bar.remove();
+    return;
+  }
+  if (style === 'Bleed') {
+    slots.forEach((el, i) => el.animate([
+      { clipPath: 'inset(100% 0 0 0)', filter: 'blur(3px)', opacity: .4 },
+      { clipPath: 'inset(0 0 0 0)', filter: 'blur(0px)', opacity: 1 }
+    ], { duration: 720, delay: i * 60, easing: 'cubic-bezier(.3,.7,.2,1)', fill: 'backwards' }));
+    return;
+  }
+  slots.forEach((el, i) => el.animate([
+    { opacity: 0, transform: 'translateY(.22em) rotate(-4deg)', filter: 'blur(5px)' },
+    { opacity: 1, transform: 'translateY(-.03em) rotate(0deg)', filter: 'blur(0px)', offset: .7 },
+    { opacity: 1, transform: 'translateY(0) rotate(0deg)', filter: 'blur(0px)' }
+  ], { duration: 560, delay: i * 70, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
+}
+
+// Hiding: the given letters leave the page; done() once the last is gone.
+function animateHide(style, els, done) {
+  if (reduceMotion || !els.length) return done();
+  let end = 0;
+  const run = (el, keyframes, opts) => { el.animate(keyframes, { ...opts, fill: 'forwards' }); end = Math.max(end, (opts.delay || 0) + opts.duration); };
+  if (style === 'Erase') {
+    const rects = els.map(el => el.getBoundingClientRect());
+    const minX = Math.min(...rects.map(r => r.left)), maxX = Math.max(...rects.map(r => r.right));
+    const minY = Math.min(...rects.map(r => r.top)), maxY = Math.max(...rects.map(r => r.bottom));
+    const sweep = 900, span = Math.max(1, maxX - minX);
+    const bar = document.createElement('div');
+    bar.style.cssText = `${fixed(minX - 8, minY - 8, 2, maxY - minY + 16)}background:var(--color-neutral-400);box-shadow:0 0 18px 8px var(--color-bg);opacity:0`;
+    layer.appendChild(bar);
+    bar.animate([{ transform: 'translateX(0)', opacity: 0 }, { opacity: 1, offset: .08 }, { opacity: 1, offset: .92 }, { transform: `translateX(${span + 16}px)`, opacity: 0 }], { duration: sweep + 120, easing: 'linear', fill: 'forwards' }).onfinish = () => bar.remove();
+    els.forEach((el, i) => run(el, [{ opacity: 1, filter: 'blur(0px)' }, { opacity: 0, filter: 'blur(2px)' }], { duration: 200, delay: sweep * ((rects[i].left + rects[i].width / 2 - minX) / span), easing: 'ease-out' }));
+  } else if (style === 'Scatter') {
+    els.forEach(el => {
+      const dx = (Math.random() - .5) * .8, dy = .5 + Math.random() * .7, rot = (Math.random() - .5) * 60;
+      run(el, [{ transform: 'translate(0,0) rotate(0deg)', opacity: 1 }, { transform: `translate(${dx}em, ${dy}em) rotate(${rot}deg)`, opacity: 0 }], { duration: 520 + Math.random() * 220, delay: Math.random() * 260, easing: 'cubic-bezier(.4,0,.8,.4)' });
+    });
+  } else {
+    els.forEach(el => run(el, [{ opacity: 1 }, { opacity: 0 }], { duration: 420, delay: Number((el.closest('.word') || {}).dataset?.word || 0) * 45, easing: 'ease-in' }));
+  }
+  setTimeout(done, end + 40);
+}
+
+// The verse's own use of the entering animation.
+function flyWord(group, target) {
+  const wordEl = verseEl.children[target];
+  const pairs = group.map((t, i) => {
+    const from = trayEl.querySelector(`[data-tray="${t.id}"]`), to = verseEl.querySelector(`[data-slot="${target}-${i}"]`);
+    return from && to ? { ch: to.lastChild.textContent, i, a: from.getBoundingClientRect(), b: to.getBoundingClientRect(), fromSize: parseFloat(getComputedStyle(from).fontSize), toSize: parseFloat(getComputedStyle(to).fontSize), to } : null;
+  }).filter(Boolean);
+  removeGroup0(); renderTray();
+  if (reduceMotion || !pairs.length) return landAll(target);
+  const style = S.anim.entry;
+  animateEntry(style, pairs, {
+    onLand: (m, last) => { S.filled[target][m.i] = true; paint(); merge(style, m.to, m.b, last); },
+    done: () => finishWord(target, wordEl),
+  });
+}
+function landAll(target) {
+  S.filled[target] = S.filled[target].map(() => true);
+  paint(); finishWord(target, null);
 }
 
 function finishWord(target, wordEl) {
@@ -568,26 +774,33 @@ function finishWord(target, wordEl) {
   if (wordEl && !reduceMotion) {
     const r = wordEl.getBoundingClientRect();
     const rule = document.createElement('div');
-    rule.style.cssText = `position:fixed;left:${r.left}px;top:${r.bottom + 2}px;width:${r.width}px;height:1px;background:var(--color-accent);transform-origin:left;transform:scaleX(0)`;
+    rule.style.cssText = `${fixed(r.left, r.bottom + 2, r.width, 1)}background:var(--color-accent);transform-origin:left;transform:scaleX(0)`;
     layer.appendChild(rule);
     rule.animate([{ transform: 'scaleX(0)', opacity: 1 }, { transform: 'scaleX(1)', opacity: 1, offset: .5 }, { transform: 'scaleX(1)', opacity: 0 }], { duration: 1300, easing: 'cubic-bezier(.6,0,.2,1)', fill: 'forwards' }).onfinish = () => rule.remove();
   }
   if (!S.done && S.filled.every(r => r.every(Boolean))) complete();
 }
 
-// Three passes per verse: full outline, initials only, then from memory.
+// Three passes per verse: full outline, initials only, then from memory. Between
+// passes the letters that will be hidden leave with the chosen hiding animation.
 function complete() {
   S.done = true; disarmHesitation(); paint();
   if (!reduceMotion) verseEl.querySelectorAll('.slot').forEach((el, i) => el.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-0.07em)' }, { transform: 'translateY(0)' }], { duration: 520, delay: 200 + i * 25, easing: 'ease-in-out' }));
   const token = S.verse;
   setTimeout(() => {
     if (S.verse !== token) return; // the reader already moved on
-    const next = () => {
-      if (S.pass < 2) reset(S.pass + 1); else loadVerse(randomVerse());
-      verseEl.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' });
-    };
-    const fade = verseEl.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-10px)' }], { duration: 340, easing: 'ease-in', fill: 'forwards' });
-    fade.onfinish = () => { fade.cancel(); next(); };
+    const toNew = S.pass >= 2, keepInitials = S.pass === 0;
+    const going = [...verseEl.querySelectorAll(toNew ? '.slot, .punct' : '.slot')].filter(el => !(keepInitials && el.dataset.slot && el.dataset.slot.endsWith('-0')));
+    animateHide(S.anim.hide, going, () => {
+      if (S.verse !== token) return;
+      if (toNew) {
+        loadVerse(randomVerse());
+        verseEl.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      } else {
+        reset(S.pass + 1);
+        for (const el of verseEl.querySelectorAll('.slot')) if (!(keepInitials && el.dataset.slot.endsWith('-0'))) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, easing: 'ease-out' });
+      }
+    });
   }, 1900);
 }
 
@@ -630,6 +843,7 @@ function matchSpeech(heard) {
 }
 function onSpeech(e) {
   gotResult = true;
+  if (S.settingsOpen) return;
   const flat = [];
   for (let r = 0; r < e.results.length; r++) {
     const res = e.results[r];
@@ -700,11 +914,110 @@ function setMode(mode) {
 // A tap anywhere opens the keyboard, or starts listening.
 function begin() { if (S.mode === 'voice') { if (!voiceWant) startListening(); } else focusInput(); }
 
+// — animation settings —
+const settingsEl = $('settings'), sheetEl = $('sheet'), stageEl = $('stage'), stageWord = $('stageWord'), stageTray = $('stageTray');
+const SAMPLE = 'letter';
+let stageTimer = 0, previewSeq = 0, lastPreview = 'entry';
+
+for (const key in ANIMS) {
+  const group = ANIMS[key], fs = document.createElement('fieldset');
+  fs.className = 'group';
+  fs.innerHTML = `<legend>${group.label}<span>${group.about}</span></legend><div class="seg"></div><p class="note" id="note-${key}"></p>`;
+  const seg = fs.querySelector('.seg');
+  for (const name in group.options) {
+    const opt = document.createElement('label');
+    opt.className = 'seg-opt';
+    opt.innerHTML = `<input type="radio" name="${key}" value="${name}"><span>${name}</span>`;
+    opt.querySelector('input').addEventListener('change', () => { S.anim[key] = name; saveAnim(); syncSettings(); preview(key); });
+    seg.appendChild(opt);
+  }
+  $('groups').appendChild(fs);
+}
+function saveAnim() { try { localStorage.setItem('letterpress-anim', JSON.stringify(S.anim)); } catch (err) { /* no storage */ } }
+function syncSettings() {
+  for (const key in ANIMS) {
+    for (const r of document.querySelectorAll(`input[name="${key}"]`)) r.checked = r.value === S.anim[key];
+    $(`note-${key}`).textContent = ANIMS[key].options[S.anim[key]];
+  }
+}
+
+// The sample word in the sheet, drawn like a word of the verse: outlined, hidden or set.
+function buildStageWord(look) {
+  stageWord.textContent = '';
+  const wordEl = makeWord([...SAMPLE].map((ch, i) => ({ ch, letter: true, i })), 0);
+  stageWord.appendChild(wordEl);
+  styleStage(look);
+  return wordEl;
+}
+function styleStage(look) {
+  for (const el of stageWord.querySelectorAll('.slot')) {
+    el.style.color = look === 'solid' ? 'var(--color-text)' : 'transparent';
+    el.style.webkitTextStroke = look === 'outline' ? '1px var(--color-neutral-400)' : '0px transparent';
+    el.firstChild.style.background = look === 'hidden' ? 'var(--color-neutral-300)' : 'transparent';
+  }
+}
+// Play one of the three moments on the sample word.
+function preview(kind) {
+  lastPreview = kind; clearTimeout(stageTimer);
+  const token = ++previewSeq, live = () => token === previewSeq && S.settingsOpen;
+  layer.textContent = ''; ghosts = []; stageTray.textContent = '';
+  const style = S.anim[kind];
+  if (kind === 'entry') {
+    const wordEl = buildStageWord('outline'), slots = [...wordEl.querySelectorAll('.slot')];
+    const spans = [...SAMPLE].map(ch => { const s = document.createElement('span'); s.textContent = ch; stageTray.appendChild(s); return s; });
+    const pairs = spans.map((from, i) => { const to = slots[i]; return { ch: to.lastChild.textContent, i, a: from.getBoundingClientRect(), b: to.getBoundingClientRect(), fromSize: parseFloat(getComputedStyle(from).fontSize), toSize: parseFloat(getComputedStyle(to).fontSize), to }; });
+    if (reduceMotion) { stageTray.textContent = ''; styleStage('solid'); return; }
+    stageTimer = setTimeout(() => {
+      if (!live()) return;
+      spans.forEach(s => { s.style.visibility = 'hidden'; });
+      animateEntry(style, pairs, { onLand: (m, last) => { if (!live()) return; m.to.style.color = 'var(--color-text)'; merge(style, m.to, m.b, last); }, done: () => {} });
+    }, 350);
+  } else if (kind === 'reveal') {
+    const wordEl = buildStageWord('hidden');
+    stageTimer = setTimeout(() => { if (!live()) return; styleStage('outline'); if (!reduceMotion) animateReveal(style, wordEl); }, 400);
+  } else {
+    const wordEl = buildStageWord('solid');
+    stageTimer = setTimeout(() => {
+      if (!live()) return;
+      animateHide(style, [...wordEl.querySelectorAll('.slot')], () => { if (live()) stageTimer = setTimeout(() => { if (live()) buildStageWord('solid'); }, 700); });
+    }, 450);
+  }
+}
+function openSettings() {
+  if (S.settingsOpen) return;
+  S.settingsOpen = true; disarmHesitation();
+  if (S.mode === 'voice') { if (voiceWant) { stopListening(); resumeVoice = true; } } else input.blur();
+  syncSettings();
+  settingsEl.hidden = false;
+  if (!reduceMotion) {
+    settingsEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
+    sheetEl.animate([{ transform: 'translateY(100%)' }, { transform: 'translateY(0)' }], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
+  preview(lastPreview);
+  $('settingsDone').focus({ preventScroll: true });
+}
+function closeSettings() {
+  if (!S.settingsOpen) return;
+  S.settingsOpen = false; previewSeq++; clearTimeout(stageTimer);
+  layer.textContent = ''; ghosts = [];
+  const finish = () => { settingsEl.hidden = true; };
+  if (reduceMotion) finish();
+  else {
+    settingsEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
+    const slide = sheetEl.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(100%)' }], { duration: 220, easing: 'ease-in', fill: 'forwards' });
+    slide.onfinish = () => { finish(); for (const a of [...settingsEl.getAnimations(), ...sheetEl.getAnimations()]) a.cancel(); };
+  }
+  if (S.mode === 'voice') { if (resumeVoice) { resumeVoice = false; startListening(); } }
+  else focusInput();
+  paint(); armHesitation();
+}
+
 // — wiring —
 input.addEventListener('input', syncFromInput);
 input.addEventListener('focus', () => { S.focused = true; paint(); armHesitation(); });
 input.addEventListener('blur', () => { S.focused = false; paint(); if (S.mode === 'typing') disarmHesitation(); });
 window.addEventListener('keydown', e => {
+  if (S.settingsOpen) { if (e.key === 'Escape') closeSettings(); return; }
   if (e.metaKey || e.ctrlKey || e.altKey || S.mode === 'voice') return;
   if (e.key === 'Enter') { e.preventDefault(); if (!S.done) sendTray(); return; }
   if (e.target === input) return;
@@ -714,7 +1027,7 @@ window.addEventListener('keydown', e => {
 });
 app.addEventListener('click', begin);
 
-for (const b of document.querySelectorAll('.mode, .new-verse')) b.addEventListener('pointerdown', e => e.preventDefault()); // keep the keyboard as it is
+for (const b of document.querySelectorAll('.mode, .new-verse, .icon-btn')) b.addEventListener('pointerdown', e => e.preventDefault()); // keep the keyboard as it is
 for (const b of document.querySelectorAll('.mode')) b.addEventListener('click', e => { e.stopPropagation(); setMode(b.dataset.mode); });
 $('newVerse').addEventListener('click', e => {
   e.stopPropagation();
@@ -723,6 +1036,10 @@ $('newVerse').addEventListener('click', e => {
   verseEl.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' });
   begin();
 });
+$('settingsBtn').addEventListener('click', e => { e.stopPropagation(); openSettings(); });
+$('settingsDone').addEventListener('click', closeSettings);
+settingsEl.addEventListener('click', e => { if (e.target === settingsEl) closeSettings(); });
+stageEl.addEventListener('click', () => preview(lastPreview));
 
 // Keep the app inside the visible area when the on-screen keyboard opens.
 function onViewport() {
@@ -735,7 +1052,7 @@ window.addEventListener('resize', fit);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { disarmHesitation(); if (voiceWant) { stopListening(); resumeVoice = true; } }
-  else { if (resumeVoice && S.mode === 'voice') { resumeVoice = false; startListening(); } armHesitation(); }
+  else { if (resumeVoice && S.mode === 'voice' && !S.settingsOpen) { resumeVoice = false; startListening(); } armHesitation(); }
 });
 
 loadVerse(randomVerse());

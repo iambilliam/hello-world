@@ -19,4 +19,14 @@ Pick **Type** or **Speak** in the header.
 
 On the Initials and From memory passes, the word you're on has a thin accent line under it that burns down over 3.5 seconds. Typing or speaking resets it. If it burns out, the word is revealed and you set it in place. A wrong word shakes off (or, when spoken, fades away) but doesn't reveal anything.
 
+## Animation settings
+
+The sliders button in the header opens a sheet with three choices, each previewed on a sample word as you pick it:
+
+- **Entering**, how a word lands in the verse: *Arc* (letters lob in from the tray), *Stamp* (pressed straight in with a bloom of ink), *Ink* (droplets gather into each letter).
+- **Revealing**, how a word you hesitated on is shown: *Unfold* (letters tumble up one by one), *Develop* (the word sharpens as a light passes over it), *Bleed* (ink rises from the baseline).
+- **Hiding**, how the verse clears for the next pass: *Fade* (word by word), *Erase* (an eraser sweeps across), *Scatter* (the type loosens and falls).
+
+Choices are remembered in the browser.
+
 **New verse** picks another one. The verses are a built-in set of 41 well-known passages.
