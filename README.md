@@ -8,12 +8,13 @@ Open `index.html` in a browser (it's built for phone screens). A random verse or
 2. **Initials**: only the first letter of each word is shown.
 3. **From memory**: only blank underlines remain.
 
-## Two ways in
+## Three ways in
 
-Pick **Type** or **Speak** in the header.
+Pick **Type**, **Speak** or **Guided** in the header.
 
 - **Type**: type a word and press space to send it. Swipe keyboards work without the space bar; tapping a suggestion replaces the word.
 - **Speak**: say the verse. Each word flies into place as the recognizer hears it. A word the recognizer settles on that isn't the next one just slips away; the hint tells you what was heard. Voice uses the browser's speech recognition (Chrome on Android, Safari on iOS), needs a microphone permission, and needs the page served over HTTPS.
+- **Guided**: hands-free. The app speaks and listens in turns, so you can use it with your eyes closed. On the Full pass it reads a phrase and you repeat it; on Initials it begins each phrase and you finish it; from memory it gives only the reference. Pause too long on a word and the app says it; repeat it to set it, or it sets it for you and moves on. A soft tick confirms each word, a low bump marks a miss, and two notes close a pass. Tap anywhere to hear the prompt again. Uses the browser's speech synthesis and recognition together; while the app is talking, what the microphone hears is ignored.
 
 ## Hesitation reveals the word
 

@@ -129,6 +129,9 @@ footer {
 #mic { display: inline-flex; margin-left: .1em; color: var(--color-neutral-300); transition: color 300ms; }
 #mic svg { display: block; width: 22px; height: 22px; }
 #mic.on { color: var(--color-accent); animation: listen 1.6s ease-in-out infinite; }
+#spk { display: inline-flex; margin-left: .1em; color: var(--color-accent); animation: listen 1.6s ease-in-out infinite; }
+#spk svg { display: block; width: 22px; height: 22px; }
+@media (max-width: 480px) { header > span:first-child { display: none; } } /* three modes need the room on a phone */
 .prompt {
   margin: 0; font-family: var(--font-body); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
   color: var(--color-neutral-500);
@@ -188,7 +191,7 @@ footer {
 .note { margin: 0; min-height: 1.5em; font-style: italic; font-size: 12px; color: var(--color-neutral-600); }
 
 @media (prefers-reduced-motion: reduce) {
-  #caret, #mic.on, #tray span[data-tray] { animation: none; }
+  #caret, #mic.on, #spk, #tray span[data-tray] { animation: none; }
 }
 </style>
 </head>
@@ -199,6 +202,7 @@ footer {
     <span class="modes" role="group" aria-label="Input">
       <button class="mode" data-mode="typing" type="button" aria-pressed="true">Type</button>
       <button class="mode" data-mode="voice" type="button" aria-pressed="false">Speak</button>
+      <button class="mode" data-mode="audio" type="button" aria-pressed="false">Guided</button>
     </span>
     <span class="actions">
       <button class="new-verse" id="newVerse" type="button">New verse</button>
@@ -217,7 +221,7 @@ footer {
   </main>
   <footer>
     <div class="rule"></div>
-    <div id="tray"><span id="cursor"><span id="caret"></span><span id="mic" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span></span></div>
+    <div id="tray"><span id="cursor"><span id="caret"></span><span id="mic" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span><span id="spk" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"></path><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"></path></svg></span></span></div>
     <p class="prompt" id="prompt"></p>
   </footer>
   <input id="input" aria-label="Type the verse" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="text" enterkeyhint="done">
@@ -348,6 +352,7 @@ const HESITATION_MS = 3500; // pause this long on a hidden word and it is shown
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const touch = matchMedia('(pointer: coarse)').matches;
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const TTS = window.speechSynthesis || null;
 
 // The three moments that can be styled, with a line on each option for the settings sheet.
 const ANIMS = {
@@ -373,7 +378,7 @@ const ANIMS = {
 
 const $ = id => document.getElementById(id);
 const app = $('app'), main = $('main'), verseEl = $('verse'), trayEl = $('tray'), cursorEl = $('cursor');
-const caretEl = $('caret'), micEl = $('mic'), layer = $('layer'), input = $('input'), hintEl = $('hint');
+const caretEl = $('caret'), micEl = $('mic'), spkEl = $('spk'), layer = $('layer'), input = $('input'), hintEl = $('hint');
 
 const S = {
   verse: null, words: [], filled: [], pass: 0, tray: [], revealed: new Set(), fuseWord: -1,
@@ -383,7 +388,9 @@ const S = {
 const reserved = new Set();
 let seq = 0, bag = [];
 try {
-  if (localStorage.getItem('letterpress-mode') === 'voice' && SR) S.mode = 'voice';
+  const savedMode = localStorage.getItem('letterpress-mode');
+  if (savedMode === 'voice' && SR) S.mode = 'voice';
+  if (savedMode === 'audio' && SR && TTS) S.mode = 'audio';
   const saved = JSON.parse(localStorage.getItem('letterpress-anim') || '{}');
   for (const k in ANIMS) if (saved[k] in ANIMS[k].options) S.anim[k] = saved[k];
   if (localStorage.getItem('letterpress-source') in SOURCES) S.source = localStorage.getItem('letterpress-source');
@@ -425,7 +432,7 @@ function reset(pass) {
   reserved.clear(); disarmHesitation();
   Object.assign(S, { pass, tray: [], revealed: new Set(), done: false, missed: '' });
   S.filled = S.words.map(w => Array(w.target.length).fill(false));
-  buildVerse(); clearInput(); paint(); fit(); armHesitation();
+  buildVerse(); clearInput(); paint(); fit(); armHesitation(); guideOnReset();
 }
 
 // A word of the verse: letter slots (each with its rule underneath) and punctuation.
@@ -456,7 +463,8 @@ function nextWord() {
   for (let i = 0; i < S.words.length; i++) if (!wordDone(i) && !reserved.has(i)) return i;
   return -1;
 }
-const engaged = () => !S.settingsOpen && (S.mode === 'voice' ? voiceWant : (S.focused || !touch));
+const spoken = () => S.mode === 'voice' || S.mode === 'audio'; // the microphone is the instrument
+const engaged = () => !S.settingsOpen && (spoken() ? voiceWant && !guide.muted : (S.focused || !touch));
 
 const VOICE_ERRORS = {
   unsupported: 'Voice input isn’t available in this browser. Typing still works.',
@@ -464,6 +472,7 @@ const VOICE_ERRORS = {
   nomic: 'No microphone was found.',
   network: 'Voice recognition needs a connection.',
   stalled: 'Listening keeps stopping. Tap to try again.',
+  nospeech: 'Spoken guidance isn\u2019t available in this browser.',
 };
 
 // Apply the current state to the verse's letter slots and the labels.
@@ -489,18 +498,19 @@ function paint() {
   });
   $('passLabel').textContent = PASSES[pass];
   [...$('marks').children].forEach((m, i) => m.classList.toggle('on', i <= pass));
-  const voice = mode === 'voice';
+  const voice = mode === 'voice' || mode === 'audio', audio = mode === 'audio';
   hintEl.textContent = done ? (pass < 2 ? 'Once more, with less to go on.' : `Well set. A new ${noun()} is coming.`)
     : voice && S.voiceError ? VOICE_ERRORS[S.voiceError]
     : S.missed ? (voice ? `Heard “${S.missed}”. Not quite.` : 'Not quite.')
+    : audio && guide.line ? guide.line
     : revealed.has(nw) ? 'Revealed. Set it in place.'
     : !S.typed ? (voice ? `Say the ${noun()}. Each word finds its place as you go.` : 'Type each word in order. Space sends it to its place.')
     : pass === 1 ? 'Only the initials remain.' : pass === 2 ? 'From memory. Hesitate, and the word is shown.' : '';
   $('newVerse').textContent = `New ${noun()}`;
-  $('prompt').textContent = voice ? (S.voiceError ? 'Voice unavailable' : voiceWant ? 'Listening' : 'Tap anywhere to listen')
+  $('prompt').textContent = voice ? (S.voiceError ? 'Voice unavailable' : guide.speaking ? 'Speaking' : voiceWant ? 'Listening' : audio ? 'Tap anywhere to begin' : 'Tap anywhere to listen')
     : touch && !S.focused ? 'Tap anywhere to begin' : 'Type a word, then space';
   caretEl.style.background = S.focused || !touch ? 'var(--color-accent)' : 'var(--color-neutral-300)';
-  caretEl.hidden = voice; micEl.hidden = !voice; micEl.classList.toggle('on', voice && voiceWant && !S.voiceError);
+  caretEl.hidden = voice; micEl.hidden = !voice || guide.speaking; spkEl.hidden = !guide.speaking; micEl.classList.toggle('on', voice && voiceWant && !S.voiceError);
   for (const b of document.querySelectorAll('.mode')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
 }
 
@@ -630,7 +640,8 @@ function miss(group) {
   });
   ghosts.push(...mine);
   removeGroup0(); renderTray(); paint();
-  if (reduceMotion || S.mode === 'voice') dropGhosts(mine, false); // a misheard word just slips away; no scolding
+  earcon('bump');
+  if (reduceMotion || spoken()) dropGhosts(mine, false); // a misheard word just slips away; no scolding
   else {
     mine.forEach(g => g.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-out' }));
     setTimeout(() => dropGhosts(mine, false), 420);
@@ -648,7 +659,7 @@ function armHesitation(fresh = true) {
   if (!fresh && hesitation && S.fuseWord === nw) return;
   disarmHesitation();
   if (S.done || nw < 0 || !engaged()) return;
-  if (S.pass === 0 || S.revealed.has(nw)) return; // nothing hidden, nothing to reveal
+  if ((S.pass === 0 && S.mode !== 'audio') || S.revealed.has(nw)) return; // nothing hidden, nothing to reveal (guided: a phrase just heard can still be lost)
   S.fuseWord = nw;
   fuseEl = document.createElement('b'); fuseEl.className = 'fuse';
   verseEl.children[nw].appendChild(fuseEl);
@@ -664,6 +675,7 @@ function revealWord(wi) {
   S.revealed.add(wi); S.missed = ''; paint();
   const wordEl = verseEl.children[wi];
   if (wordEl && !reduceMotion) animateReveal(S.anim.reveal, wordEl);
+  if (S.mode === 'audio') guideReveal(wi);
 }
 
 // ═══ Animations ═══
@@ -865,18 +877,19 @@ function flyWord(group, target) {
   const style = S.anim.entry;
   animateEntry(style, pairs, {
     onLand: (m, last) => { S.filled[target][m.i] = true; paint(); merge(style, m.to, m.b, last); },
-    done: () => finishWord(target, wordEl),
+    done: () => finishWord(target, wordEl, false),
   });
 }
 function landAll(target) {
   S.filled[target] = S.filled[target].map(() => true);
-  paint(); finishWord(target, null);
+  paint(); finishWord(target, null, false);
 }
 
-function finishWord(target, wordEl) {
+function finishWord(target, wordEl, byGuide) {
   reserved.delete(target);
   S.filled[target] = S.filled[target].map(() => true);
   paint();
+  if (!byGuide) earcon('tick');
   if (wordEl && !reduceMotion) {
     const r = wordEl.getBoundingClientRect();
     const rule = document.createElement('div');
@@ -885,12 +898,14 @@ function finishWord(target, wordEl) {
     rule.animate([{ transform: 'scaleX(0)', opacity: 1 }, { transform: 'scaleX(1)', opacity: 1, offset: .5 }, { transform: 'scaleX(1)', opacity: 0 }], { duration: 1300, easing: 'cubic-bezier(.6,0,.2,1)', fill: 'forwards' }).onfinish = () => rule.remove();
   }
   if (!S.done && S.filled.every(r => r.every(Boolean))) complete();
+  else guideAdvance();
 }
 
 // Three passes per verse: full outline, initials only, then from memory. Between
 // passes the letters that will be hidden leave with the chosen hiding animation.
 function complete() {
   S.done = true; disarmHesitation(); paint();
+  if (S.mode === 'audio') { earcon('done'); speakText(S.pass < 2 ? 'Good.' : 'Well done.', { line: S.pass < 2 ? 'Good.' : 'Well done.' }); }
   if (!reduceMotion) verseEl.querySelectorAll('.slot').forEach((el, i) => el.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-0.07em)' }, { transform: 'translateY(0)' }], { duration: 520, delay: 200 + i * 25, easing: 'ease-in-out' }));
   const token = S.verse;
   setTimeout(() => {
@@ -957,8 +972,11 @@ function onSpeech(e) {
     for (const w of speechWords(res[0].transcript)) flat.push({ w, final: res.isFinal });
   }
   const text = flat.map(x => x.w + (x.final ? '.' : '')).join(' ');
+  if (S.mode === 'audio' && guide.speaking) { voiceCursor = flat.length; voiceSeen = text; setTrayWords([]); return; } // the app's own voice is not the reader's
   if (text !== voiceSeen) { voiceSeen = text; armHesitation(); } // speech is not hesitating
   let c = Math.min(voiceCursor, flat.length);
+  // What leaked through of the app's own words: in the moment after it stops, any of them; later, only one that is not the word wanted (the reader repeats the app in Full).
+  if (S.mode === 'audio') while (c < flat.length && guide.lastSpoken.includes(flat[c].w) && (guide.muted || !matchSpeech([flat[c].w]))) c++;
   const pendingOf = () => flat.slice(c).map(x => x.w);
   setTrayWords(pendingOf());
   while (c < flat.length && !S.done && nextWord() >= 0) {
@@ -966,6 +984,7 @@ function onSpeech(e) {
     if (m) {
       setTrayWords([...m.targets, ...pendingOf().slice(m.used)]); // the heard letters become the verse's own, then fly
       m.targets.forEach(() => submit());
+      guide.lastSpoken = [];
       c += m.used; continue;
     }
     if (flat[c].final) { submit(); c++; continue; } // settled and wrong
@@ -975,7 +994,7 @@ function onSpeech(e) {
   setTrayWords(pendingOf().slice(0, 3)); paint();
 }
 function startListening() {
-  if (S.mode !== 'voice' || rec) return;
+  if (!spoken() || rec) return;
   if (!SR) { S.voiceError = 'unsupported'; paint(); return; }
   clearTimeout(restartTimer);
   rec = new SR();
@@ -995,7 +1014,7 @@ function startListening() {
     rec = null;
     quickEnds = !gotResult && Date.now() - startedAt < 1000 ? quickEnds + 1 : 0;
     if (quickEnds >= 3) { voiceWant = false; S.voiceError = S.voiceError || 'stalled'; disarmHesitation(); }
-    if (voiceWant && S.mode === 'voice' && document.visibilityState === 'visible') restartTimer = setTimeout(startListening, 300);
+    if (voiceWant && spoken() && document.visibilityState === 'visible') restartTimer = setTimeout(startListening, 300);
     paint();
   };
   voiceWant = true; S.voiceError = '';
@@ -1003,23 +1022,190 @@ function startListening() {
   paint();
 }
 function stopListening() {
-  voiceWant = false; clearTimeout(restartTimer); quickEnds = 0;
+  voiceWant = false; clearTimeout(restartTimer); quickEnds = 0; guideStop();
   if (rec) { const r = rec; rec = null; try { r.abort(); } catch (err) { /* already stopped */ } }
   disarmHesitation(); paint();
 }
 
 function setMode(mode) {
   if (mode === S.mode) return;
-  if (mode === 'voice' && !SR) { S.voiceError = 'unsupported'; S.mode = 'voice'; stopListening(); input.blur(); return; }
-  S.mode = mode; S.voiceError = ''; S.missed = '';
+  const lacks = mode !== 'typing' && !SR ? 'unsupported' : mode === 'audio' && !TTS ? 'nospeech' : '';
+  guideStop(); ensureAudio(mode);
+  if (lacks) { S.voiceError = lacks; S.mode = mode; stopListening(); input.blur(); paint(); return; }
+  S.mode = mode; S.voiceError = ''; S.missed = ''; guide.line = '';
   try { localStorage.setItem('letterpress-mode', mode); } catch (err) { /* no storage */ }
   clearInput(); disarmHesitation();
-  if (mode === 'voice') { input.blur(); startListening(); }
+  if (spoken()) { input.blur(); startListening(); if (mode === 'audio') guideStage(false); }
   else { stopListening(); focusInput(); }
   paint(); armHesitation();
 }
-// A tap anywhere opens the keyboard, or starts listening.
-function begin() { if (S.mode === 'voice') { if (!voiceWant) startListening(); } else focusInput(); }
+// A tap anywhere opens the keyboard, starts listening, or has the guide say its prompt again.
+function begin() {
+  ensureAudio(S.mode);
+  if (S.mode === 'typing') return focusInput();
+  if (!voiceWant) { startListening(); if (S.mode === 'audio') guideStage(false); }
+  else if (S.mode === 'audio') guideRepeat();
+}
+
+// — guided, hands-free —
+// The app speaks and listens in turns. Full: it reads a phrase and the reader repeats it.
+// Initials: it begins each phrase, setting those words as it says them, and the reader finishes
+// it. From memory: it gives the reference and nothing more. A pause on a word has the app say
+// that word, and the reader repeats it to set it; left unsaid, the app sets it and goes on.
+// While the app speaks, the microphone's transcript is ignored so its own voice never counts.
+const SPEAK_TAIL_MS = 600;
+const guide = { seq: 0, speaking: false, muted: false, line: '', lastSpoken: [], utter: null, repeatTimer: 0, startTimer: 0 };
+
+// Phrases: runs of words cut at punctuation and at most six words long.
+function phrasesOf(words) {
+  const closes = w => /[,;:.!?—]/.test(w.parts.filter(p => !p.letter).map(p => p.ch).join(''));
+  const runs = []; let start = 0;
+  words.forEach((w, i) => { if (closes(w) || i === words.length - 1) { runs.push([start, i + 1]); start = i + 1; } });
+  const out = [];
+  for (const [a, b] of runs) {
+    const n = b - a, parts = Math.ceil(n / 6), size = Math.ceil(n / parts);
+    for (let s = a; s < b; s += size) out.push([s, Math.min(b, s + size)]);
+  }
+  return out;
+}
+const phraseAt = wi => phrasesOf(S.words).find(([a, b]) => wi >= a && wi < b) || null;
+const allSetBefore = wi => S.words.every((_, i) => i >= wi || wordDone(i));
+// A word as the voice should read it: LORD is a word, not four letters.
+function spokenForm(wi) {
+  const raw = S.words[wi].parts.map(p => p.ch).join('');
+  const letters = raw.replace(/[^\p{L}]/gu, '');
+  return letters.length > 1 && letters === letters.toUpperCase() ? raw.replace(letters, letters[0] + letters.slice(1).toLowerCase()) : raw;
+}
+// References the way they are said, not written.
+function sayRef(ref) {
+  return ref
+    .replace(/^1 (Corinthians|Thessalonians|Timothy|Peter|John)/, 'First $1').replace(/^2 (Corinthians|Thessalonians|Timothy|Peter)/, 'Second $1')
+    .replace(/^(\d) Henry IV/, 'Henry the Fourth, part $1').replace(/Henry V\b/, 'Henry the Fifth').replace(/Richard III/, 'Richard the Third')
+    .replace(/^Psalm (\d+):(\d+)$/, 'Psalm $1, verse $2').replace(/ (\d+):(\d+)$/, ', chapter $1, verse $2').replace(/ (\d+)\.(\d+)$/, ', act $1, scene $2');
+}
+function pickVoice() {
+  if (!TTS) return null;
+  const voices = TTS.getVoices(), en = voices.filter(v => /^en[-_]/i.test(v.lang));
+  return en.find(v => /Google US English|Samantha|Daniel|Karen|Moira|Natural|Neural|Premium/i.test(v.name)) || en.find(v => v.default) || en[0] || voices[0] || null;
+}
+// Say something; the transcript is muted until a moment after the voice stops. onWord gets the
+// character offset of each word as it is spoken (where the browser reports it), onSpoken runs
+// when the voice stops, onEnd once listening is open again.
+function speakText(text, { onWord, onSpoken, onEnd, line } = {}) {
+  const token = ++guide.seq;
+  guide.line = line === undefined ? text : line;
+  guide.speaking = true; guide.muted = true; disarmHesitation(); paint();
+  let ended = false;
+  const stopped = () => {
+    if (ended || token !== guide.seq) return;
+    ended = true; guide.speaking = false; guide.lastSpoken = speechWords(text); paint();
+    if (onSpoken) onSpoken();
+    setTimeout(() => {
+      if (token !== guide.seq) return;
+      guide.muted = false; // what was heard meanwhile is already consumed; a restarted session starts its own count
+      armHesitation(); paint();
+      if (onEnd) onEnd();
+    }, SPEAK_TAIL_MS);
+  };
+  if (!TTS) return stopped();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US'; u.rate = 0.95; u.pitch = 1;
+  const v = pickVoice(); if (v) u.voice = v;
+  u.onend = stopped; u.onerror = stopped;
+  if (onWord) u.onboundary = ev => { if (token === guide.seq && typeof ev.charIndex === 'number') onWord(ev.charIndex); };
+  guide.utter = u; // kept: Chrome drops an utterance's events once it is collected
+  const watchdog = setTimeout(stopped, 3000 + text.length * 90);
+  if (u.addEventListener) u.addEventListener('end', () => clearTimeout(watchdog));
+  const go = () => { try { TTS.speak(u); } catch (err) { stopped(); } }; // a voice that will not start still leaves the line on screen
+  if (TTS.speaking || TTS.pending) { TTS.cancel(); setTimeout(() => { if (token === guide.seq) go(); }, 60); }
+  else go();
+}
+function guideStop() {
+  guide.seq++; guide.speaking = false; guide.muted = false; guide.lastSpoken = [];
+  clearTimeout(guide.repeatTimer); clearTimeout(guide.startTimer);
+  if (TTS) try { TTS.cancel(); } catch (err) { /* nothing was speaking */ }
+}
+// A word the app sets itself: it appears in place, no flight.
+function guideSet(wi) {
+  if (wordDone(wi) || reserved.has(wi)) return;
+  reserved.add(wi);
+  S.filled[wi] = S.filled[wi].map(() => true); paint();
+  const wordEl = verseEl.children[wi];
+  if (wordEl && !reduceMotion) [...wordEl.querySelectorAll('.slot')].forEach((el, i) => el.animate([{ opacity: 0, filter: 'blur(3px)', transform: 'translateY(.1em)' }, { opacity: 1, filter: 'blur(0px)', transform: 'translateY(0)' }], { duration: 360, delay: i * 30, easing: 'ease-out' }));
+  finishWord(wi, null, true);
+}
+// The stage's opening line, then its first prompt.
+function guideStage(resume) {
+  if (S.mode !== 'audio' || !voiceWant || S.done) return;
+  clearTimeout(guide.startTimer); clearTimeout(guide.repeatTimer);
+  if (resume) return guidePhrase(false);
+  const ref = S.verse ? sayRef(S.verse[0]) : '';
+  const intro = S.pass === 0 ? `${ref}. Listen, then repeat each phrase.` : S.pass === 1 ? `${ref}, again. The app begins each phrase; you finish it.` : `${ref}, from memory.`;
+  const line = S.pass === 0 ? 'Listen, then repeat each phrase.' : S.pass === 1 ? 'The app begins each phrase; you finish it.' : 'From memory.';
+  speakText(intro, { line, onEnd: () => guidePhrase(false) });
+}
+// The prompt for the phrase the reader is on. Full: the whole phrase, to be repeated. Initials:
+// its first half, set as it is said. From memory: nothing. `again` says it without setting.
+function guidePhrase(again) {
+  const nw = nextWord(); if (S.mode !== 'audio' || nw < 0 || S.done) return;
+  const ph = phraseAt(nw); if (!ph) return;
+  const [a, b] = ph, n = b - a;
+  const ids = i => Array.from({ length: i }, (_, k) => a + k);
+  if (S.pass === 0) { speakText(ids(n).map(spokenForm).join(' '), { line: guide.line }); return; }
+  if (S.pass === 1) {
+    const mine = ids(Math.floor(n / 2));
+    const open = again ? mine : mine.filter(i => !wordDone(i) && !reserved.has(i));
+    if (!open.length) return;
+    const offsets = []; let pos = 0;
+    for (const i of open) { offsets.push(pos); pos += spokenForm(i).length + 1; }
+    let k = 0;
+    const set = upTo => { if (again) return; while (k < open.length && offsets[k] <= upTo) guideSet(open[k++]); };
+    speakText(open.map(spokenForm).join(' '), { line: guide.line, onWord: set, onSpoken: () => set(Infinity) });
+    return;
+  }
+  if (again) speakText(sayRef(S.verse[0]), { line: guide.line });
+}
+// After a word lands: when the next word opens a new phrase, prompt it.
+function guideAdvance() {
+  if (S.mode !== 'audio' || !voiceWant || guide.speaking || guide.muted || S.done) return;
+  const nw = nextWord(); if (nw < 0) return;
+  const ph = phraseAt(nw);
+  if (ph && ph[0] === nw && allSetBefore(nw)) guidePhrase(false);
+}
+// A pause: the app says the word. The reader repeats it; if not, the app sets it and goes on.
+function guideReveal(wi) {
+  const word = spokenForm(wi).replace(/^[^\p{L}]+|[^\p{L}]+$/gu, ''); // the word alone, no punctuation to read out
+  speakText(word, { line: `“${word}”`, onEnd: () => {
+    clearTimeout(guide.repeatTimer);
+    guide.repeatTimer = setTimeout(() => { if (S.mode === 'audio' && voiceWant && nextWord() === wi) guideSet(wi); }, HESITATION_MS);
+  } });
+}
+function guideRepeat() { if (!guide.speaking) guidePhrase(true); }
+function guideOnReset() {
+  if (S.mode !== 'audio') return;
+  guideStop();
+  if (voiceWant) guide.startTimer = setTimeout(() => guideStage(false), 500);
+}
+// Earcons: a tick as a word is set, a bump on a miss, two notes when a stage is done.
+let ac = null;
+function ensureAudio(mode) {
+  if (mode !== 'audio' || ac) return;
+  try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (err) { ac = null; }
+}
+function earcon(kind) {
+  if (S.mode !== 'audio' || !ac) return;
+  try {
+    if (ac.state === 'suspended') ac.resume();
+    const t = ac.currentTime, notes = kind === 'tick' ? [[880, 0, .06]] : kind === 'bump' ? [[196, 0, .09]] : [[660, 0, .09], [880, .1, .16]];
+    for (const [f, at, dur] of notes) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sine'; o.frequency.value = f; o.connect(g); g.connect(ac.destination);
+      g.gain.setValueAtTime(0, t + at); g.gain.linearRampToValueAtTime(.08, t + at + .01); g.gain.exponentialRampToValueAtTime(.0001, t + at + dur);
+      o.start(t + at); o.stop(t + at + dur + .02);
+    }
+  } catch (err) { /* no audio */ }
+}
+
 
 // — animation settings —
 const settingsEl = $('settings'), sheetEl = $('sheet'), stageEl = $('stage'), stageWord = $('stageWord'), stageTray = $('stageTray');
@@ -1109,7 +1295,7 @@ function preview(kind) {
 function openSettings() {
   if (S.settingsOpen) return;
   S.settingsOpen = true; disarmHesitation();
-  if (S.mode === 'voice') { if (voiceWant) { stopListening(); resumeVoice = true; } } else input.blur();
+  if (spoken()) { if (voiceWant) { stopListening(); resumeVoice = true; } } else input.blur();
   syncSettings();
   settingsEl.hidden = false;
   if (!reduceMotion) {
@@ -1130,7 +1316,7 @@ function closeSettings() {
     const slide = sheetEl.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(100%)' }], { duration: 220, easing: 'ease-in', fill: 'forwards' });
     slide.onfinish = () => { finish(); for (const a of [...settingsEl.getAnimations(), ...sheetEl.getAnimations()]) a.cancel(); };
   }
-  if (S.mode === 'voice') { if (resumeVoice) { resumeVoice = false; startListening(); } }
+  if (spoken()) { if (resumeVoice) { resumeVoice = false; startListening(); if (S.mode === 'audio') guideStage(S.filled.some(r => r.some(Boolean))); } }
   else focusInput();
   paint(); armHesitation();
 }
@@ -1141,7 +1327,7 @@ input.addEventListener('focus', () => { S.focused = true; paint(); armHesitation
 input.addEventListener('blur', () => { S.focused = false; paint(); if (S.mode === 'typing') disarmHesitation(); });
 window.addEventListener('keydown', e => {
   if (S.settingsOpen) { if (e.key === 'Escape') closeSettings(); return; }
-  if (e.metaKey || e.ctrlKey || e.altKey || S.mode === 'voice') return;
+  if (e.metaKey || e.ctrlKey || e.altKey || spoken()) return;
   if (e.key === 'Enter') { e.preventDefault(); if (!S.done) sendTray(); return; }
   if (e.target === input) return;
   if (e.key === 'Backspace') return backspace();
@@ -1157,7 +1343,7 @@ $('newVerse').addEventListener('click', e => {
   layer.textContent = ''; ghosts = [];
   loadVerse(randomVerse());
   verseEl.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' });
-  begin();
+  if (S.mode === 'audio') { ensureAudio(); if (!voiceWant) begin(); } else begin();
 });
 $('settingsBtn').addEventListener('click', e => { e.stopPropagation(); openSettings(); });
 $('settingsDone').addEventListener('click', closeSettings);
@@ -1175,7 +1361,7 @@ window.addEventListener('resize', fit);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { disarmHesitation(); if (voiceWant) { stopListening(); resumeVoice = true; } }
-  else { if (resumeVoice && S.mode === 'voice' && !S.settingsOpen) { resumeVoice = false; startListening(); } armHesitation(); }
+  else { if (resumeVoice && spoken() && !S.settingsOpen) { resumeVoice = false; startListening(); if (S.mode === 'audio') guideStage(S.filled.some(r => r.some(Boolean))); } armHesitation(); }
 });
 
 loadVerse(randomVerse());
