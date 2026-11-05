@@ -507,7 +507,7 @@ function paint() {
     : !S.typed ? (voice ? `Say the ${noun()}. Each word finds its place as you go.` : 'Type each word in order. Space sends it to its place.')
     : pass === 1 ? 'Only the initials remain.' : pass === 2 ? 'From memory. Hesitate, and the word is shown.' : '';
   $('newVerse').textContent = `New ${noun()}`;
-  $('prompt').textContent = voice ? (S.voiceError ? 'Voice unavailable' : guide.speaking ? 'Speaking' : voiceWant ? 'Listening' : audio ? 'Tap anywhere to begin' : 'Tap anywhere to listen')
+  $('prompt').textContent = voice ? (S.voiceError ? 'Voice unavailable' : guide.speaking ? 'Speaking' : voiceWant ? (live ? 'Listening' : 'Starting') : audio ? 'Tap anywhere to begin' : 'Tap anywhere to listen')
     : touch && !S.focused ? 'Tap anywhere to begin' : 'Type a word, then space';
   caretEl.style.background = S.focused || !touch ? 'var(--color-accent)' : 'var(--color-neutral-300)';
   caretEl.hidden = voice; micEl.hidden = !voice || guide.speaking; spkEl.hidden = !guide.speaking; micEl.classList.toggle('on', voice && voiceWant && !S.voiceError);
@@ -654,6 +654,14 @@ function miss(group) {
 // A hidden word gets HESITATION_MS of quiet before it is shown. Any typing or speech
 // restarts the clock; sending a word starts it for the next one.
 let hesitation = 0, fuseEl = null;
+// How long a hidden word may wait before it is shown: the base, a little per letter, longer at
+// the start of a phrase, longest at the first word of all.
+const phraseStarts = wi => wi > 0 && /[,;:.!?\u2014]/.test(S.words[wi - 1].parts.filter(p => !p.letter).map(p => p.ch).join(''));
+function allowanceFor(wi) {
+  const w = S.words[wi]; if (!w) return HESITATION_MS;
+  const ms = HESITATION_MS + 60 * w.target.length;
+  return wi === 0 ? ms * 2 : phraseStarts(wi) ? ms * 1.6 : ms;
+}
 function armHesitation(fresh = true) {
   const nw = nextWord();
   if (!fresh && hesitation && S.fuseWord === nw) return;
@@ -663,8 +671,9 @@ function armHesitation(fresh = true) {
   S.fuseWord = nw;
   fuseEl = document.createElement('b'); fuseEl.className = 'fuse';
   verseEl.children[nw].appendChild(fuseEl);
-  if (!reduceMotion) fuseEl.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { duration: HESITATION_MS, easing: 'linear', fill: 'forwards' });
-  hesitation = setTimeout(() => { disarmHesitation(); revealWord(nw); }, HESITATION_MS);
+  const ms = allowanceFor(nw);
+  if (!reduceMotion) fuseEl.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { duration: ms, easing: 'linear', fill: 'forwards' });
+  hesitation = setTimeout(() => { disarmHesitation(); revealWord(nw); }, ms);
   paint();
 }
 function disarmHesitation() {
@@ -930,7 +939,7 @@ function complete() {
 // for typing. Words are read off it in order; a heard word that matches the word up
 // next flies into place as soon as it appears, even before the recognizer is sure of
 // it. A wrong word is only counted once the recognizer has settled on it.
-let rec = null, voiceWant = false, voiceCursor = 0, voiceSeen = '', restartTimer = 0, startedAt = 0, gotResult = false, quickEnds = 0, resumeVoice = false;
+let rec = null, voiceWant = false, voiceCursor = 0, voiceSeen = '', restartTimer = 0, startedAt = 0, gotResult = false, quickEnds = 0, resumeVoice = false, live = false;
 const NUMBERS = { 0: 'zero', 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
 function speechWords(text) {
   return text.toLowerCase().split(/\s+/).map(w => {
@@ -948,10 +957,18 @@ function within1(a, b) { // true when one edit apart
   let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
   return a.slice(i + 1) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i) || a.slice(i) === b.slice(i + 1);
 }
+// Soundex: words that sound alike share a code, so "shepard" finds "shepherd".
+function soundex(w) {
+  const codes = { b: 1, f: 1, p: 1, v: 1, c: 2, g: 2, j: 2, k: 2, q: 2, s: 2, x: 2, z: 2, d: 3, t: 3, l: 4, m: 5, n: 5, r: 6 };
+  let out = w[0], last = codes[w[0]] || 0;
+  for (const ch of w.slice(1)) { const c = codes[ch] || 0; if (c && c !== last) out += c; if (ch !== 'h' && ch !== 'w') last = c; }
+  return (out + '000').slice(0, 4);
+}
 function similar(heard, target) {
   if (heard === target) return true;
   if (aliasOf.has(heard) && aliasOf.get(heard) === aliasOf.get(target)) return true;
-  return target.length >= 7 && within1(heard, target); // only the long, rare words get a letter of slack
+  if (target.length >= 7 && within1(heard, target)) return true; // only the long, rare words get a letter of slack
+  return target.length >= 6 && heard.length >= 4 && soundex(heard) === soundex(target);
 }
 // Match the heard words against the verse: one word, a word the recognizer split in
 // two or three ("whither so ever"), or one that it joined ("today" for "to day").
@@ -968,24 +985,27 @@ function onSpeech(e) {
   if (S.settingsOpen) return;
   const flat = [];
   for (let r = 0; r < e.results.length; r++) {
-    const res = e.results[r];
-    for (const w of speechWords(res[0].transcript)) flat.push({ w, final: res.isFinal });
+    const res = e.results[r], main = speechWords(res[0].transcript), alts = [];
+    for (let k = 1; k < (res.length || 1); k++) alts.push(speechWords(res[k].transcript));
+    main.forEach((w, j) => flat.push({ w, final: res.isFinal, alts: alts.map(a => a[j]).filter(x => x && x !== w) }));
   }
   const text = flat.map(x => x.w + (x.final ? '.' : '')).join(' ');
-  if (S.mode === 'audio' && guide.speaking) { voiceCursor = flat.length; voiceSeen = text; setTrayWords([]); return; } // the app's own voice is not the reader's
+  if (guide.speaking) return; // the microphone is off while the app speaks; a late result is its own
   if (text !== voiceSeen) { voiceSeen = text; armHesitation(); } // speech is not hesitating
   let c = Math.min(voiceCursor, flat.length);
-  // What leaked through of the app's own words: in the moment after it stops, any of them; later, only one that is not the word wanted (the reader repeats the app in Full).
-  if (S.mode === 'audio') while (c < flat.length && guide.lastSpoken.includes(flat[c].w) && (guide.muted || !matchSpeech([flat[c].w]))) c++;
   const pendingOf = () => flat.slice(c).map(x => x.w);
   setTrayWords(pendingOf());
   while (c < flat.length && !S.done && nextWord() >= 0) {
-    const m = matchSpeech(pendingOf().slice(0, 3));
+    let m = matchSpeech(pendingOf().slice(0, 3));
+    if (!m) for (const a of flat[c].alts || []) { m = matchSpeech([a, ...pendingOf().slice(1, 3)]); if (m) break; } // the recognizer's other guesses
     if (m) {
       setTrayWords([...m.targets, ...pendingOf().slice(m.used)]); // the heard letters become the verse's own, then fly
       m.targets.forEach(() => submit());
-      guide.lastSpoken = [];
       c += m.used; continue;
+    }
+    if (S.mode === 'audio') { // a first word lost while the microphone was starting: the next two line up
+      const nw = nextWord(), p = pendingOf();
+      if (p.length >= 2 && S.words[nw + 2] && similar(p[0], S.words[nw + 1].target) && similar(p[1], S.words[nw + 2].target)) { guideSet(nw); continue; }
     }
     if (flat[c].final) { submit(); c++; continue; } // settled and wrong
     break; // still provisional: wait for the recognizer
@@ -998,9 +1018,16 @@ function startListening() {
   if (!SR) { S.voiceError = 'unsupported'; paint(); return; }
   clearTimeout(restartTimer);
   rec = new SR();
-  rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-  voiceCursor = 0; voiceSeen = ''; gotResult = false;
-  rec.onstart = () => { startedAt = Date.now(); S.voiceError = ''; paint(); armHesitation(false); };
+  rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
+  voiceCursor = 0; voiceSeen = ''; gotResult = false; live = false;
+  rec.onstart = () => {
+    startedAt = Date.now(); S.voiceError = ''; live = true;
+    if (guide.awaitTurn) { // the app has just spoken: the reader's turn, and the clock, start now
+      guide.awaitTurn = false; earcon('turn'); armHesitation(true);
+      const f = guide.onLive; guide.onLive = null; if (f) f();
+    } else armHesitation(false);
+    paint();
+  };
   rec.onresult = onSpeech;
   rec.onerror = ev => {
     const code = ev.error;
@@ -1011,10 +1038,11 @@ function startListening() {
     voiceWant = false; disarmHesitation(); paint();
   };
   rec.onend = () => {
-    rec = null;
-    quickEnds = !gotResult && Date.now() - startedAt < 1000 ? quickEnds + 1 : 0;
+    rec = null; live = false;
+    const ours = guide.pausing; guide.pausing = false; // stopped for the app to speak: not a failure
+    if (!ours) quickEnds = !gotResult && Date.now() - startedAt < 1000 ? quickEnds + 1 : 0;
     if (quickEnds >= 3) { voiceWant = false; S.voiceError = S.voiceError || 'stalled'; disarmHesitation(); }
-    if (voiceWant && spoken() && document.visibilityState === 'visible') restartTimer = setTimeout(startListening, 300);
+    if (voiceWant && spoken() && !guide.speaking && document.visibilityState === 'visible') restartTimer = setTimeout(startListening, 300);
     paint();
   };
   voiceWant = true; S.voiceError = '';
@@ -1053,8 +1081,8 @@ function begin() {
 // it. From memory: it gives the reference and nothing more. A pause on a word has the app say
 // that word, and the reader repeats it to set it; left unsaid, the app sets it and goes on.
 // While the app speaks, the microphone's transcript is ignored so its own voice never counts.
-const SPEAK_TAIL_MS = 600;
-const guide = { seq: 0, speaking: false, muted: false, line: '', lastSpoken: [], utter: null, repeatTimer: 0, startTimer: 0 };
+const SPEAK_TAIL_MS = 150;
+const guide = { seq: 0, speaking: false, muted: false, line: '', utter: null, repeatTimer: 0, startTimer: 0, awaitTurn: false, onLive: null, pausing: false };
 
 // Phrases: runs of words cut at punctuation and at most six words long.
 function phrasesOf(words) {
@@ -1094,17 +1122,22 @@ function pickVoice() {
 function speakText(text, { onWord, onSpoken, onEnd, line } = {}) {
   const token = ++guide.seq;
   guide.line = line === undefined ? text : line;
-  guide.speaking = true; guide.muted = true; disarmHesitation(); paint();
+  guide.speaking = true; guide.muted = true; disarmHesitation();
+  if (rec) { guide.pausing = true; const r = rec; rec = null; live = false; try { r.abort(); } catch (err) { /* already stopped */ } } // the microphone is off while the app speaks: its voice never enters the transcript
+  paint();
   let ended = false;
   const stopped = () => {
     if (ended || token !== guide.seq) return;
-    ended = true; guide.speaking = false; guide.lastSpoken = speechWords(text); paint();
+    ended = true; guide.speaking = false; paint();
     if (onSpoken) onSpoken();
     setTimeout(() => {
       if (token !== guide.seq) return;
-      guide.muted = false; // what was heard meanwhile is already consumed; a restarted session starts its own count
-      armHesitation(); paint();
+      guide.muted = false;
       if (onEnd) onEnd();
+      // Unless the guide went on talking, the reader's turn: the microphone comes back, and the
+      // clock starts only once it is live.
+      if (!guide.speaking && voiceWant && S.mode === 'audio') { guide.awaitTurn = true; startListening(); }
+      paint();
     }, SPEAK_TAIL_MS);
   };
   if (!TTS) return stopped();
@@ -1121,7 +1154,7 @@ function speakText(text, { onWord, onSpoken, onEnd, line } = {}) {
   else go();
 }
 function guideStop() {
-  guide.seq++; guide.speaking = false; guide.muted = false; guide.lastSpoken = [];
+  guide.seq++; guide.speaking = false; guide.muted = false; guide.awaitTurn = false; guide.onLive = null;
   clearTimeout(guide.repeatTimer); clearTimeout(guide.startTimer);
   if (TTS) try { TTS.cancel(); } catch (err) { /* nothing was speaking */ }
 }
@@ -1177,7 +1210,7 @@ function guideReveal(wi) {
   const word = spokenForm(wi).replace(/^[^\p{L}]+|[^\p{L}]+$/gu, ''); // the word alone, no punctuation to read out
   speakText(word, { line: `“${word}”`, onEnd: () => {
     clearTimeout(guide.repeatTimer);
-    guide.repeatTimer = setTimeout(() => { if (S.mode === 'audio' && voiceWant && nextWord() === wi) guideSet(wi); }, HESITATION_MS);
+    guide.onLive = () => { guide.repeatTimer = setTimeout(() => { if (S.mode === 'audio' && voiceWant && nextWord() === wi) guideSet(wi); }, allowanceFor(wi)); };
   } });
 }
 function guideRepeat() { if (!guide.speaking) guidePhrase(true); }
@@ -1196,7 +1229,8 @@ function earcon(kind) {
   if (S.mode !== 'audio' || !ac) return;
   try {
     if (ac.state === 'suspended') ac.resume();
-    const t = ac.currentTime, notes = kind === 'tick' ? [[880, 0, .06]] : kind === 'bump' ? [[196, 0, .09]] : [[660, 0, .09], [880, .1, .16]];
+    if (kind === 'turn' && /Android/i.test(navigator.userAgent)) return; // Android's recognizer already sounds its own
+    const t = ac.currentTime, notes = kind === 'tick' ? [[880, 0, .06]] : kind === 'bump' ? [[196, 0, .09]] : kind === 'turn' ? [[1320, 0, .05]] : [[660, 0, .09], [880, .1, .16]];
     for (const [f, at, dur] of notes) {
       const o = ac.createOscillator(), g = ac.createGain();
       o.type = 'sine'; o.frequency.value = f; o.connect(g); g.connect(ac.destination);
